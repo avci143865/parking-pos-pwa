@@ -1850,7 +1850,7 @@ code {
 
   body.print-receipt-slip #receipt-modal .modal-dialog {
     width: auto !important;
-    max-width: 80mm !important;
+    max-width: 76mm !important;
     max-height: none !important;
     margin: 0 auto !important;
     box-shadow: none !important;
@@ -1860,7 +1860,7 @@ code {
   }
 
   body.print-receipt-slip #receipt-modal .modal-body {
-    padding: 2mm !important;
+    padding: 0 !important;
     overflow: visible !important;
   }
 
@@ -1899,7 +1899,7 @@ code {
 
   body.print-checkout-slip #checkout-result-modal .modal-dialog {
     width: auto !important;
-    max-width: 80mm !important;
+    max-width: 76mm !important;
     max-height: none !important;
     margin: 0 auto !important;
     box-shadow: none !important;
@@ -1909,7 +1909,7 @@ code {
   }
 
   body.print-checkout-slip #checkout-result-modal .modal-body {
-    padding: 2mm !important;
+    padding: 0 !important;
     overflow: visible !important;
   }
 
@@ -1927,9 +1927,20 @@ code {
   html.print-width-58 #receipt-slip.thermal-slip,
   html.print-width-58 #checkout-invoice-slip,
   html.print-width-58 #checkout-invoice-slip.thermal-slip {
-    width: 54mm;
-    max-width: 54mm;
-    font-size: 8pt;
+    width: 50mm;
+    max-width: 50mm;
+    font-size: 7.5pt;
+  }
+
+  html.print-width-58 #receipt-slip .qr-host canvas,
+  html.print-width-58 #receipt-slip .qr-host img {
+    width: 26mm !important;
+    height: 26mm !important;
+  }
+
+  html.print-width-58 #receipt-slip h3,
+  html.print-width-58 #checkout-invoice-slip .invoice-title {
+    font-size: 9pt;
   }
 
   #receipt-slip,
@@ -1938,15 +1949,15 @@ code {
   #checkout-invoice-slip.thermal-slip {
     position: relative;
     margin: 0 auto;
-    width: 76mm;
-    max-width: 76mm;
+    width: 72mm;
+    max-width: 72mm;
     border: none !important;
     box-shadow: none !important;
     padding: 0 !important;
     background: #fff !important;
     color: #111 !important;
-    font-size: 9pt;
-    line-height: 1.35;
+    font-size: 8pt;
+    line-height: 1.25;
     page-break-after: avoid !important;
     page-break-inside: avoid !important;
     break-after: avoid !important;
@@ -1955,38 +1966,48 @@ code {
 
   #receipt-slip h3,
   #checkout-invoice-slip .invoice-title {
-    font-size: 11pt;
-    margin: 0 0 0.35rem;
+    font-size: 10pt;
+    margin: 0 0 0.2rem;
     color: #111 !important;
   }
 
   #receipt-slip .hint-scan {
-    font-size: 7.5pt;
-    margin-bottom: 0.35rem;
+    font-size: 7pt;
+    margin: 0 0 0.25rem;
     color: #333 !important;
   }
 
   #receipt-slip .qr-host {
-    padding: 2px;
+    padding: 1px;
   }
 
   #receipt-slip .qr-host canvas,
   #receipt-slip .qr-host img {
-    width: 36mm !important;
-    height: 36mm !important;
+    width: 30mm !important;
+    height: 30mm !important;
   }
 
   #receipt-slip .receipt-code-plain {
-    font-size: 11pt;
+    font-size: 10pt;
     font-weight: 700;
     letter-spacing: 0.04em;
   }
 
   #receipt-slip .receipt-meta,
   #checkout-invoice-slip .invoice-meta {
-    font-size: 8.5pt;
-    gap: 0.2rem 0.5rem;
-    padding-top: 0.4rem;
+    font-size: 8pt;
+    gap: 0.15rem 0.5rem;
+    padding-top: 0.3rem;
+  }
+
+  #receipt-slip .receipt-exit-block {
+    margin-top: 0.5rem !important;
+    padding-top: 0.4rem !important;
+  }
+
+  #receipt-slip .receipt-exit-title {
+    margin: 0 0 0.25rem !important;
+    font-size: 8pt !important;
   }
 
   #checkout-invoice-slip .invoice-header {
@@ -2030,9 +2051,9 @@ code {
     display: block !important;
     color: #111 !important;
     border-top-color: #999 !important;
-    font-size: 9pt;
-    margin-top: 0.4rem;
-    padding-top: 0.35rem;
+    font-size: 8pt;
+    margin-top: 0.3rem;
+    padding-top: 0.25rem;
   }
 }
 
