@@ -3548,3 +3548,121 @@ textarea:hover {
 ::selection {
   background: rgba(34, 211, 238, 0.35);
 }
+
+/* —— صفحات المدير بنفس حداثة الدخول/الخروج —— */
+
+/* بطاقات الإحصائيات: شريط علوي ملوّن حسب النوع */
+.stats-cards .stat-card {
+  position: relative;
+  overflow: hidden;
+  padding-top: 1.15rem;
+}
+
+.stats-cards .stat-card::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 3px;
+}
+
+.stats-cards .stat-card:nth-child(1)::before {
+  background: linear-gradient(90deg, rgba(34, 211, 238, 0.1), rgba(34, 211, 238, 0.9), rgba(34, 211, 238, 0.1));
+}
+
+.stats-cards .stat-card:nth-child(2)::before {
+  background: linear-gradient(90deg, rgba(52, 211, 153, 0.1), rgba(52, 211, 153, 0.9), rgba(52, 211, 153, 0.1));
+}
+
+.stats-cards .stat-card:nth-child(3)::before,
+.stats-cards .stat-card:nth-child(4)::before {
+  background: linear-gradient(90deg, rgba(251, 191, 36, 0.1), rgba(251, 191, 36, 0.9), rgba(251, 191, 36, 0.1));
+}
+
+.stats-cards .stat-card:nth-child(2) .stat-card-value {
+  color: var(--success);
+}
+
+/* عناوين أقسام الإعدادات والإحصائيات: نقطة مضيئة */
+#view-settings .panel-title::before,
+#view-stats .panel-title::before {
+  content: "";
+  display: inline-block;
+  width: 0.55em;
+  height: 0.55em;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-inline-end: 0.5rem;
+  box-shadow: 0 0 12px var(--accent);
+  vertical-align: baseline;
+}
+
+/* منطقة الخطر: إطار أحمر واضح */
+.panel-danger-zone {
+  border-color: rgba(248, 113, 113, 0.35);
+}
+
+.panel-danger-zone .panel-title {
+  color: #f87171;
+}
+
+.panel-danger-zone .panel-title::before {
+  background: #f87171;
+  box-shadow: 0 0 12px #f87171;
+}
+
+/* أزرار تنقل الشهر: دائرية */
+.month-nav-btn {
+  border-radius: 999px;
+  min-width: 2.75rem;
+  font-size: 1.15rem;
+  line-height: 1;
+  padding-bottom: 0.6rem;
+}
+
+.stats-month-input {
+  min-height: 44px;
+}
+
+/* تنبيه امتلاء الموقف على رقم المتاح */
+.stat-critical {
+  color: #f87171 !important;
+  text-shadow: 0 0 18px rgba(248, 113, 113, 0.45);
+}
+
+.stat-warn {
+  color: #fbbf24 !important;
+}
+
+/* زر إظهار/إخفاء كلمة المرور */
+.pass-wrap {
+  position: relative;
+  display: block;
+}
+
+.pass-wrap input {
+  width: 100%;
+  padding-inline-end: 2.6rem;
+}
+
+.pass-toggle {
+  position: absolute;
+  inset-inline-end: 0.35rem;
+  top: 50%;
+  transform: translateY(-50%);
+  min-width: 2.2rem;
+  min-height: 2.2rem;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 0;
+}
+
+.pass-toggle:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}

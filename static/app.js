@@ -390,7 +390,11 @@ async function api(path, options = {}) {
 async function refreshStats() {
   const s = await api("/api/settings");
   $("cap").textContent = s.total_slots;
-  $("avail").textContent = s.available_slots;
+  const availEl = $("avail");
+  availEl.textContent = s.available_slots;
+  const capRatio = s.total_slots > 0 ? s.available_slots / s.total_slots : 1;
+  availEl.classList.toggle("stat-critical", capRatio <= 0.15);
+  availEl.classList.toggle("stat-warn", capRatio > 0.15 && capRatio <= 0.35);
   $("rate").textContent = formatDailyRate(s.price_per_hour_cents);
   $("total-slots").value = s.total_slots;
   $("price-hour").value = String(s.price_per_hour_cents);
@@ -2080,6 +2084,16 @@ function wireNav() {
   $("stats-refresh").addEventListener("click", () => {
     refreshMonthStats().catch((e) => alert(e.message));
   });
+  const shiftStatsMonth = (delta) => {
+    const input = $("stats-month");
+    const base = input.value || new Date().toISOString().slice(0, 7);
+    const parts = base.split("-").map(Number);
+    const d = new Date(parts[0], (parts[1] || 1) - 1 + delta, 1);
+    input.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    refreshMonthStats().catch((e) => alert(e.message));
+  };
+  $("stats-prev")?.addEventListener("click", () => shiftStatsMonth(-1));
+  $("stats-next")?.addEventListener("click", () => shiftStatsMonth(1));
   $("stats-month").addEventListener("change", () => {
     refreshMonthStats().catch((e) => alert(e.message));
   });
@@ -2588,8 +2602,21 @@ async function refreshTickets() {
   }
 }
 
+function beginFormBusy(form, busyLabel) {
+  const btn = form ? form.querySelector('button[type="submit"]') : null;
+  if (!btn || btn.disabled) return () => {};
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = busyLabel || "جارٍ التنفيذ…";
+  return () => {
+    btn.disabled = false;
+    btn.textContent = label;
+  };
+}
+
 $("login-form").addEventListener("submit", async (e) => {
   e.preventDefault();
+  const doneBusy = beginFormBusy(e.currentTarget);
   const errEl = $("login-error");
   errEl.textContent = "";
   try {
@@ -2612,11 +2639,14 @@ $("login-form").addEventListener("submit", async (e) => {
     window.ParkingPos?.tryAutoStartCamera();
   } catch (err) {
     errEl.textContent = err.message || "فشل تسجيل الدخول.";
+  } finally {
+    doneBusy();
   }
 });
 
 $("settings-form").addEventListener("submit", async (e) => {
   e.preventDefault();
+  const doneBusy = beginFormBusy(e.currentTarget);
   const msg = $("settings-msg");
   msg.textContent = "";
   try {
@@ -2635,11 +2665,14 @@ $("settings-form").addEventListener("submit", async (e) => {
     msg.style.color = "var(--success)";
   } catch (err) {
     alert(err.message);
+  } finally {
+    doneBusy();
   }
 });
 
 $("checkin-form").addEventListener("submit", async (e) => {
   e.preventDefault();
+  const doneBusy = beginFormBusy(e.currentTarget);
   const mechVal = ($("mech") && $("mech").value) ? $("mech").value.trim() : "";
   try {
     const data = await api("/api/check-in", {
@@ -2704,11 +2737,14 @@ $("checkin-form").addEventListener("submit", async (e) => {
     } else {
       alert(err.message);
     }
+  } finally {
+    doneBusy();
   }
 });
 
 $("checkout-form").addEventListener("submit", async (e) => {
   e.preventDefault();
+  const doneBusy = beginFormBusy(e.currentTarget);
   try {
     const data = await api("/api/check-out", {
       method: "POST",
@@ -2739,11 +2775,14 @@ $("checkout-form").addEventListener("submit", async (e) => {
     } else {
       alert(err.message);
     }
+  } finally {
+    doneBusy();
   }
 });
 
 $("admin-password-form").addEventListener("submit", async (e) => {
   e.preventDefault();
+  const doneBusy = beginFormBusy(e.currentTarget);
   const msg = $("admin-pw-msg");
   msg.textContent = "";
   try {
@@ -2760,11 +2799,14 @@ $("admin-password-form").addEventListener("submit", async (e) => {
   } catch (err) {
     msg.textContent = err.message || "فشل الحفظ.";
     msg.style.color = "#f87171";
+  } finally {
+    doneBusy();
   }
 });
 
 $("admin-rename-form").addEventListener("submit", async (e) => {
   e.preventDefault();
+  const doneBusy = beginFormBusy(e.currentTarget);
   const msg = $("admin-rename-msg");
   msg.textContent = "";
   try {
@@ -2790,11 +2832,14 @@ $("admin-rename-form").addEventListener("submit", async (e) => {
   } catch (err) {
     msg.textContent = err.message || "فشل التغيير.";
     msg.style.color = "#f87171";
+  } finally {
+    doneBusy();
   }
 });
 
 $("admin-wipe-form").addEventListener("submit", async (e) => {
   e.preventDefault();
+  const doneBusy = beginFormBusy(e.currentTarget);
   const msg = $("admin-wipe-msg");
   msg.textContent = "";
   try {
@@ -2815,7 +2860,23 @@ $("admin-wipe-form").addEventListener("submit", async (e) => {
   } catch (err) {
     msg.textContent = err.message || "فشل المسح.";
     msg.style.color = "#f87171";
+  } finally {
+    doneBusy();
   }
+});
+
+document.querySelectorAll("[data-pass-for]").forEach((toggleBtn) => {
+  toggleBtn.addEventListener("click", () => {
+    const input = $(toggleBtn.dataset.passFor);
+    if (!input) return;
+    const show = input.type === "password";
+    input.type = show ? "text" : "password";
+    toggleBtn.textContent = show ? "🙈" : "👁";
+    const label = show ? "إخفاء كلمة المرور" : "إظهار كلمة المرور";
+    toggleBtn.setAttribute("aria-label", label);
+    toggleBtn.setAttribute("title", label);
+    input.focus();
+  });
 });
 
 async function refreshDeskData() {

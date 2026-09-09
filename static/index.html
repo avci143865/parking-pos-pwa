@@ -13,8 +13,8 @@
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
   <link rel="alternate icon" href="/favicon.ico" />
   <link rel="apple-touch-icon" href="/static/pwa-icon-192.png" />
-  <script src="/static/theme.js?v=20260909-9"></script>
-  <link rel="stylesheet" href="/static/styles.css?v=20260909-9" />
+  <script src="/static/theme.js?v=20260910-1"></script>
+  <link rel="stylesheet" href="/static/styles.css?v=20260910-1" />
 </head>
 <body>
   <!-- شاشة تسجيل الدخول -->
@@ -30,7 +30,7 @@
       <p class="muted login-lead">أدخل بيانات الحساب للمتابعة.</p>
       <form id="login-form" class="stack-form">
         <label>اسم المستخدم <input type="text" id="login-user" required autocomplete="username" /></label>
-        <label>كلمة المرور <input type="password" id="login-pass" required autocomplete="current-password" /></label>
+        <label>كلمة المرور <span class="pass-wrap"><input type="password" id="login-pass" required autocomplete="current-password" /><button type="button" class="pass-toggle" data-pass-for="login-pass" aria-label="إظهار كلمة المرور" title="إظهار كلمة المرور">👁</button></span></label>
         <button type="submit" class="btn primary">دخول</button>
       </form>
       <p id="login-error" class="hint login-error" aria-live="polite"></p>
@@ -361,9 +361,11 @@
           <h1>إحصائيات الشهر</h1>
         </div>
         <div class="stats-toolbar">
+          <button type="button" class="btn btn-sm-pad month-nav-btn" id="stats-prev" aria-label="الشهر السابق" title="الشهر السابق">›</button>
           <label class="stats-month-label">الشهر
             <input type="month" id="stats-month" class="stats-month-input" />
           </label>
+          <button type="button" class="btn btn-sm-pad month-nav-btn" id="stats-next" aria-label="الشهر التالي" title="الشهر التالي">‹</button>
           <button type="button" class="btn primary btn-sm-pad" id="stats-refresh">تحديث</button>
           <button type="button" class="btn btn-sm-pad" id="stats-export-xlsx">تنزيل Excel</button>
         </div>
@@ -443,7 +445,7 @@
           <label>المستخدم
             <select id="admin-pw-user" required></select>
           </label>
-          <label>كلمة المرور الجديدة <input type="password" id="admin-pw-new" minlength="6" autocomplete="new-password" required /></label>
+          <label>كلمة المرور الجديدة <span class="pass-wrap"><input type="password" id="admin-pw-new" minlength="6" autocomplete="new-password" required /><button type="button" class="pass-toggle" data-pass-for="admin-pw-new" aria-label="إظهار كلمة المرور" title="إظهار كلمة المرور">👁</button></span></label>
           <button type="submit" class="btn accent btn-block">حفظ كلمة المرور</button>
         </form>
         <p id="admin-pw-msg" class="hint muted" aria-live="polite"></p>
@@ -549,11 +551,11 @@
     </div>
   </div>
 
-  <script src="/static/vendor/html5-qrcode.min.js?v=20260909-9"></script>
-  <script src="/static/vendor/qrcode.min.js?v=20260909-9"></script>
-  <script src="/static/vendor/html2canvas.min.js?v=20260909-9"></script>
-  <script src="/static/vendor/jszip.min.js?v=20260909-9"></script>
-  <script src="/static/pos-pwa.js?v=20260909-9"></script>
-  <script src="/static/app.js?v=20260909-9"></script>
+  <script src="/static/vendor/html5-qrcode.min.js?v=20260910-1"></script>
+  <script src="/static/vendor/qrcode.min.js?v=20260910-1"></script>
+  <script src="/static/vendor/html2canvas.min.js?v=20260910-1"></script>
+  <script src="/static/vendor/jszip.min.js?v=20260910-1"></script>
+  <script src="/static/pos-pwa.js?v=20260910-1"></script>
+  <script src="/static/app.js?v=20260910-1"></script>
 </body>
 </html>
