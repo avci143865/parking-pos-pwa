@@ -3614,6 +3614,24 @@ textarea:hover {
   transform: translateY(-2px);
 }
 
+/* —— حساب المدير: توسيط السعة/المتاح/السعر مثل صفحة الموظف —— */
+.desk-view--full .desk-header {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.desk-view--full .desk-header-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.desk-view--full .desk-hero-stats {
+  justify-content: center;
+  width: 100%;
+}
+
 /* —— عمليات المكتب كنوافذ: أزرار كبيرة + شاشة على المقاس —— */
 body {
   overflow-x: clip;
