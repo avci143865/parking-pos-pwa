@@ -1,0 +1,1791 @@
+import mimetypes
+import os
+import uuid
+import zipfile
+from contextlib import asynccontextmanager
+from io import BytesIO
+from pathlib import Path
+
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import and_, delete, func, or_, select, update
+from sqlalchemy.orm import Session, aliased
+
+from app.auth_password import hash_password, verify_password
+from app.auth_tokens import create_access_token
+from app.billing import amount_due_cents, billable_days, stay_duration_hours, utc_now
+from app.database import Base, SessionLocal, engine, get_db, ensure_schema_migrations
+from app.deps import (
+    get_current_user,
+    require_admin,
+    require_check_in,
+    require_check_out,
+    role_can_check_in,
+    role_can_check_out,
+    user_permissions,
+)
+from openpyxl import Workbook
+
+from app.fifo_queue import (
+    DEFAULT_TRUCK_TYPE,
+    all_truck_types_for_export,
+    assign_fifo_to_session,
+    can_session_exit_fifo,
+    current_allowed_queue_number,
+    first_ready_exit_session,
+    normalize_truck_type,
+    queue_status_for_session,
+    queue_status_label,
+    release_fifo_sessions,
+    ready_exit_count_for_type,
+    truck_type_from_profile,
+    waiting_count_for_type,
+    waiting_in_queue_count_for_type,
+    FIFO_STATUS_READY,
+)
+from app.month_stats_service import build_month_stats_response
+from app.models import ParkingSession, ParkingSettings, User, VehicleProfile
+from app.receipt_codes import allocate_unique_receipt_code
+from app.schemas import (
+    ActiveSessionBrief,
+    AdminRenameUserRequest,
+    AdminSetPasswordRequest,
+    AdminWipeDataRequest,
+    ChangeOwnPasswordRequest,
+    CheckInRequest,
+    CheckInResponse,
+    CheckOutRequest,
+    CheckOutResponse,
+    FifoBatchExportRequest,
+    FifoDashboardResponse,
+    FifoExitedItem,
+    FifoReleaseResponse,
+    FifoQueueItem,
+    FifoQueueStatus,
+    FifoTypeQueue,
+    LoginRequest,
+    LoginResponse,
+    MonthStatsResponse,
+    OkResponse,
+    RenameUserResponse,
+    SessionHistoryItem,
+    SettingsResponse,
+    SettingsUpdate,
+    UserListItem,
+    UserMe,
+    VehicleProfileFilterOption,
+    VehicleProfileFiltersMeta,
+    VehicleProfileListItem,
+    VehicleProfileListResponse,
+    VehicleProfilePublic,
+    VehiclePublicRegisterResponse,
+    VehicleScanResponse,
+    VehicleTokenBody,
+)
+from app.time_damascus import damascus_now, damascus_today_date, utc_naive_to_damascus
+
+
+def seed_users_if_empty(db: Session) -> None:
+    if db.scalar(select(User.id).limit(1)) is not None:
+        ensure_split_employee_users(db)
+        return
+    admin_pw = os.environ.get("PARKING_ADMIN_PASSWORD", "admin123")
+    default_emp_pw = os.environ.get("PARKING_EMPLOYEE_PASSWORD", "employee123")
+    emp_in_pw = os.environ.get("PARKING_EMPLOYEE_IN_PASSWORD", default_emp_pw)
+    emp_out_pw = os.environ.get("PARKING_EMPLOYEE_OUT_PASSWORD", default_emp_pw)
+    db.add(
+        User(
+            username="admin",
+            password_hash=hash_password(admin_pw),
+            role="admin",
+        )
+    )
+    db.add(
+        User(
+            username="employee_in",
+            password_hash=hash_password(emp_in_pw),
+            role="employee_in",
+        )
+    )
+    db.add(
+        User(
+            username="employee_out",
+            password_hash=hash_password(emp_out_pw),
+            role="employee_out",
+        )
+    )
+    db.commit()
+
+
+def ensure_split_employee_users(db: Session) -> None:
+    """قواعد قديمة: إنشاء employee_in/out وإيقاف حساب employee الموحّد."""
+    default_emp_pw = os.environ.get("PARKING_EMPLOYEE_PASSWORD", "employee123")
+    emp_in_pw = os.environ.get("PARKING_EMPLOYEE_IN_PASSWORD", default_emp_pw)
+    emp_out_pw = os.environ.get("PARKING_EMPLOYEE_OUT_PASSWORD", default_emp_pw)
+    changed = False
+    legacy = db.scalar(select(User).where(User.username == "employee"))
+    if legacy is not None and legacy.role == "employee":
+        if db.scalar(select(User.id).where(User.username == "employee_in")) is None:
+            db.add(
+                User(
+                    username="employee_in",
+                    password_hash=hash_password(emp_in_pw),
+                    role="employee_in",
+                )
+            )
+            changed = True
+        if db.scalar(select(User.id).where(User.username == "employee_out")) is None:
+            db.add(
+                User(
+                    username="employee_out",
+                    password_hash=hash_password(emp_out_pw),
+                    role="employee_out",
+                )
+            )
+            changed = True
+        if changed:
+            legacy.is_active = False
+    if changed:
+        db.commit()
+
+
+def init_db():
+    Base.metadata.create_all(bind=engine)
+    ensure_schema_migrations()
+    VEHICLE_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    db = SessionLocal()
+    try:
+        row = db.get(ParkingSettings, 1)
+        if row is None:
+            db.add(
+                ParkingSettings(
+                    id=1,
+                    total_slots=20,
+                    price_per_hour_cents=200,
+                )
+            )
+            db.commit()
+        seed_users_if_empty(db)
+    finally:
+        db.close()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(title="ادارة الكراج", lifespan=lifespan)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_arabic(_request, _exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": "البيانات المُدخلة غير صالحة. تحقق من الحقول والأرقام المطلوبة.",
+        },
+    )
+
+
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+BASE_APP_DIR = Path(__file__).resolve().parent.parent
+VEHICLE_UPLOAD_DIR = BASE_APP_DIR / "uploads" / "vehicle_photos"
+MAX_VEHICLE_PHOTO_BYTES = 5 * 1024 * 1024
+ALLOWED_VEHICLE_PHOTO_EXT = {".jpg", ".jpeg", ".png", ".webp"}
+if STATIC_DIR.is_dir():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+@app.post("/api/auth/login", response_model=LoginResponse)
+def login(body: LoginRequest, db: Session = Depends(get_db)):
+    u = db.scalar(select(User).where(User.username == body.username.strip()))
+    if u is None or not verify_password(body.password, u.password_hash):
+        raise HTTPException(
+            status_code=401,
+            detail="اسم المستخدم أو كلمة المرور غير صحيحة.",
+        )
+    if not u.is_active:
+        raise HTTPException(status_code=403, detail="الحساب موقوف.")
+    try:
+        token = create_access_token(username=u.username, role=u.role)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    return LoginResponse(
+        access_token=token,
+        token_type="bearer",
+        role=u.role,
+        username=u.username,
+    )
+
+
+@app.get("/api/auth/me", response_model=UserMe)
+def auth_me(user: User = Depends(get_current_user)):
+    can_in, can_out = user_permissions(user)
+    return UserMe(
+        username=user.username,
+        role=user.role,
+        can_check_in=can_in,
+        can_check_out=can_out,
+    )
+
+
+@app.post("/api/auth/change-password", response_model=OkResponse)
+def change_own_password(
+    body: ChangeOwnPasswordRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not verify_password(body.old_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="كلمة المرور الحالية غير صحيحة.")
+    user.password_hash = hash_password(body.new_password)
+    db.commit()
+    return OkResponse()
+
+
+@app.get("/api/admin/users", response_model=list[UserListItem])
+def admin_list_users(
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    rows = db.scalars(
+        select(User).where(User.is_active.is_(True)).order_by(User.username.asc())
+    ).all()
+    return [UserListItem(username=r.username, role=r.role) for r in rows]
+
+
+@app.put("/api/admin/users/password", response_model=OkResponse)
+def admin_set_user_password(
+    body: AdminSetPasswordRequest,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    username = body.username.strip()
+    u = db.scalar(select(User).where(User.username == username))
+    if u is None:
+        raise HTTPException(status_code=404, detail="المستخدم غير موجود.")
+    u.password_hash = hash_password(body.new_password)
+    db.commit()
+    return OkResponse()
+
+
+@app.put("/api/admin/users/username", response_model=RenameUserResponse)
+def admin_rename_user(
+    body: AdminRenameUserRequest,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    cur = body.current_username.strip()
+    new = body.new_username.strip()
+    if not new:
+        raise HTTPException(status_code=400, detail="اسم المستخدم الجديد فارغ.")
+    if cur.lower() == new.lower():
+        raise HTTPException(status_code=400, detail="اسم المستخدم الجديد مطابق للحالي.")
+    taken = db.scalar(
+        select(User.id).where(func.lower(User.username) == func.lower(new))
+    )
+    if taken is not None:
+        raise HTTPException(status_code=400, detail="اسم المستخدم الجديد مستخدم مسبقًا.")
+    u = db.scalar(select(User).where(User.username == cur))
+    if u is None:
+        raise HTTPException(status_code=404, detail="المستخدم الحالي غير موجود.")
+    u.username = new
+    db.commit()
+    renamed_self = admin.id == u.id
+    return RenameUserResponse(ok=True, renamed_self=renamed_self)
+
+
+WIPE_CONFIRMATION = "امسح_كل_البيانات"
+
+
+@app.post("/api/admin/database/wipe", response_model=OkResponse)
+def admin_wipe_parking_data(
+    body: AdminWipeDataRequest,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """حذف كل جلسات الموقف وإعادة إعدادات السعة/السعر للافتراضي. لا يحذف المستخدمين."""
+    if body.confirmation.strip() != WIPE_CONFIRMATION:
+        raise HTTPException(
+            status_code=400,
+            detail=f'اكتب بالضبط: {WIPE_CONFIRMATION}',
+        )
+    db.execute(delete(ParkingSession))
+    s = get_settings_row(db)
+    s.total_slots = 20
+    s.price_per_hour_cents = 200
+    db.commit()
+    return OkResponse()
+
+
+def get_settings_row(db: Session) -> ParkingSettings:
+    row = db.get(ParkingSettings, 1)
+    if row is None:
+        row = ParkingSettings(id=1, total_slots=20, price_per_hour_cents=200)
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+    return row
+
+
+def occupied_slot_numbers(db: Session) -> set[int]:
+    q = select(ParkingSession.slot_number).where(ParkingSession.exited_at.is_(None))
+    return set(db.scalars(q).all())
+
+
+def next_free_slot(db: Session, total: int) -> int | None:
+    taken = occupied_slot_numbers(db)
+    for n in range(1, total + 1):
+        if n not in taken:
+            return n
+    return None
+
+
+def _finalize_checkout_session(db: Session, row: ParkingSession) -> CheckOutResponse:
+    if row.exited_at is not None:
+        raise HTTPException(status_code=400, detail="تم خروج هذه المركبة مسبقًا.")
+    _assert_fifo_exit_allowed(db, row)
+    s = get_settings_row(db)
+    now = utc_now()
+    days = billable_days(row.entered_at, now)
+    duration_hrs = stay_duration_hours(row.entered_at, now)
+    due = amount_due_cents(s.price_per_hour_cents, days)
+    fifo_num = row.fifo_queue_number
+    fifo_type = row.fifo_truck_type
+    driver, company, vtype = _profile_fields_for_session(db, row)
+    row.exited_at = now
+    row.hours_billed = float(days)
+    row.amount_due_cents = due
+    row.paid = True
+    db.commit()
+    db.refresh(row)
+    return CheckOutResponse(
+        receipt_code=row.receipt_code,
+        license_plate=row.license_plate,
+        slot_number=row.slot_number,
+        entered_at=row.entered_at,
+        exited_at=row.exited_at,
+        duration_hours=duration_hrs,
+        days_billed=days,
+        daily_rate_cents=s.price_per_hour_cents,
+        amount_due_cents=due,
+        fifo_queue_number=fifo_num,
+        fifo_truck_type=fifo_type,
+        driver_name=driver,
+        partnership_company=company,
+        vehicle_type=vtype or fifo_type,
+    )
+
+
+def _optional_profile_text(value: str | None, max_len: int) -> str | None:
+    s = (value or "").strip()
+    if not s:
+        return None
+    if len(s) > max_len:
+        raise HTTPException(status_code=400, detail=f"الحقل يتجاوز {max_len} حرفًا.")
+    return s
+
+
+def _mechanical_number(value: str | None) -> str:
+    s = (value or "").strip()
+    if len(s) > 64:
+        raise HTTPException(status_code=400, detail="رقم الميكانيك طويل جدًا (64 حرفًا كحد أقصى).")
+    return s
+
+
+def _profile_public(p: VehicleProfile) -> VehicleProfilePublic:
+    mech = _mechanical_number(p.mechanical_number)
+    return VehicleProfilePublic(
+        id=p.id,
+        license_plate=p.license_plate,
+        vehicle_make=p.vehicle_make,
+        vehicle_type=p.vehicle_type,
+        vehicle_color=p.vehicle_color,
+        driver_name=p.driver_name,
+        owner_name=p.owner_name,
+        partnership_company=p.partnership_company,
+        mechanical_number=mech or None,
+        has_photo=bool(p.photo_path),
+    )
+
+
+def _public_base_url(request: Request) -> str:
+    raw = (os.environ.get("PARKING_PUBLIC_BASE_URL") or "").strip()
+    if raw:
+        return raw.rstrip("/")
+    return str(request.base_url).rstrip("/")
+
+
+def _vehicle_qr_payload(public_token: str) -> str:
+    """رمز QR خام (UUID) لقراءته من قارئات الباركود والكاميرا."""
+    return public_token.strip()
+
+
+def _format_damascus_dt(dt) -> str:
+    if dt is None:
+        return "—"
+    return utc_naive_to_damascus(dt).strftime("%Y-%m-%d %H:%M")
+
+
+def _profile_fields_for_session(db: Session, row: ParkingSession) -> tuple[str | None, str | None, str | None]:
+    if row.vehicle_profile_id is None:
+        return None, None, row.fifo_truck_type
+    prof = db.get(VehicleProfile, row.vehicle_profile_id)
+    if prof is None:
+        return None, None, row.fifo_truck_type
+    return prof.driver_name, prof.partnership_company, prof.vehicle_type
+
+
+def _fifo_status_for_session(db: Session, row: ParkingSession) -> FifoQueueStatus:
+    truck = row.fifo_truck_type or DEFAULT_TRUCK_TYPE
+    allowed = current_allowed_queue_number(db, truck)
+    return FifoQueueStatus(
+        can_exit=can_session_exit_fifo(db, row),
+        queue_status=queue_status_for_session(row),
+        fifo_queue_number=row.fifo_queue_number,
+        fifo_truck_type=row.fifo_truck_type,
+        current_allowed_queue_number=allowed,
+        waiting_count=waiting_count_for_type(db, truck),
+    )
+
+
+def _assert_fifo_exit_allowed(db: Session, row: ParkingSession) -> None:
+    if can_session_exit_fifo(db, row):
+        return
+    truck = row.fifo_truck_type or DEFAULT_TRUCK_TYPE
+    allowed = current_allowed_queue_number(db, truck)
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "message": "المركبة في الانتظار — لم تُدرج ضمن المطلوب للخروج بعد.",
+            "vehicle_queue_number": row.fifo_queue_number,
+            "current_allowed_queue_number": allowed,
+            "fifo_truck_type": truck,
+            "queue_status": queue_status_for_session(row),
+        },
+    )
+
+
+def _create_active_session(
+    db: Session,
+    *,
+    prof: VehicleProfile | None,
+    plate: str,
+    slot: int,
+    receipt: str,
+    now,
+    notes: str,
+    truck_type: str | None = None,
+) -> ParkingSession:
+    t_type = normalize_truck_type(truck_type or (truck_type_from_profile(prof) if prof else None))
+    session_row = ParkingSession(
+        receipt_code=receipt,
+        license_plate=plate,
+        vehicle_make=prof.vehicle_make if prof else None,
+        vehicle_color=prof.vehicle_color if prof else None,
+        notes=notes,
+        slot_number=slot,
+        entered_at=now,
+        exited_at=None,
+        paid=False,
+        vehicle_profile_id=prof.id if prof else None,
+    )
+    assign_fifo_to_session(db, session_row, t_type)
+    db.add(session_row)
+    return session_row
+
+
+def _checkin_response_from_session(
+    db: Session,
+    session_row: ParkingSession,
+    prof: VehicleProfile | None = None,
+    *,
+    public_token: str | None = None,
+    registration_order: int | None = None,
+    qr_payload: str | None = None,
+) -> CheckInResponse:
+    driver = prof.driver_name if prof else None
+    company = prof.partnership_company if prof else None
+    return CheckInResponse(
+        receipt_code=session_row.receipt_code,
+        slot_number=session_row.slot_number,
+        entered_at=session_row.entered_at,
+        license_plate=session_row.license_plate,
+        profile_id=prof.id if prof else session_row.vehicle_profile_id,
+        public_token=public_token or (prof.public_token if prof else None),
+        registration_order=registration_order,
+        qr_payload=qr_payload,
+        vehicle_make=prof.vehicle_make if prof else session_row.vehicle_make,
+        vehicle_type=prof.vehicle_type if prof else session_row.fifo_truck_type,
+        vehicle_color=prof.vehicle_color if prof else session_row.vehicle_color,
+        driver_name=driver,
+        owner_name=prof.owner_name if prof else None,
+        partnership_company=company,
+        mechanical_number=_mechanical_number(prof.mechanical_number) if prof else None,
+        fifo_queue_number=session_row.fifo_queue_number,
+        fifo_truck_type=session_row.fifo_truck_type,
+    )
+
+
+def _build_fifo_dashboard(db: Session, search: str | None = None) -> FifoDashboardResponse:
+    q = (
+        select(ParkingSession, VehicleProfile)
+        .outerjoin(VehicleProfile, VehicleProfile.id == ParkingSession.vehicle_profile_id)
+        .where(
+            ParkingSession.exited_at.is_(None),
+            ParkingSession.fifo_queue_number.isnot(None),
+        )
+        .order_by(
+            ParkingSession.fifo_truck_type.asc(),
+            ParkingSession.fifo_queue_number.asc(),
+            ParkingSession.entered_at.asc(),
+        )
+    )
+    rows = db.execute(q).all()
+    needle = (search or "").strip().lower()
+    by_type: dict[str, list[FifoQueueItem]] = {}
+    discovered: list[str] = []
+    for sess, prof in rows:
+        truck = sess.fifo_truck_type or DEFAULT_TRUCK_TYPE
+        if truck not in discovered:
+            discovered.append(truck)
+        driver = prof.driver_name if prof else None
+        company = prof.partnership_company if prof else None
+        plate = sess.license_plate or ""
+        if needle:
+            hay = " ".join(
+                filter(
+                    None,
+                    [
+                        str(sess.fifo_queue_number),
+                        truck,
+                        plate,
+                        driver or "",
+                        company or "",
+                        sess.receipt_code,
+                    ],
+                )
+            ).lower()
+            if needle not in hay:
+                continue
+        status = queue_status_for_session(sess)
+        first_ready = first_ready_exit_session(db, truck)
+        is_turn = first_ready is not None and first_ready.id == sess.id
+        may_exit = can_session_exit_fifo(db, sess)
+        by_type.setdefault(truck, []).append(
+            FifoQueueItem(
+                session_id=sess.id,
+                fifo_queue_number=int(sess.fifo_queue_number or 0),
+                fifo_truck_type=truck,
+                license_plate=plate,
+                driver_name=driver,
+                partnership_company=company,
+                entered_at=sess.entered_at,
+                queue_status=status,
+                is_current_turn=is_turn,
+                can_exit=may_exit,
+                receipt_code=sess.receipt_code,
+            )
+        )
+    types = all_truck_types_for_export(discovered)
+    queues: list[FifoTypeQueue] = []
+    for truck in types:
+        items = by_type.get(truck, [])
+        if needle and not items:
+            continue
+        allowed = current_allowed_queue_number(db, truck)
+        queues.append(
+            FifoTypeQueue(
+                truck_type=truck,
+                waiting_count=waiting_count_for_type(db, truck) if not needle else len(items),
+                ready_exit_count=ready_exit_count_for_type(db, truck) if not needle else sum(
+                    1 for it in items if it.queue_status == FIFO_STATUS_READY
+                ),
+                waiting_in_queue_count=waiting_in_queue_count_for_type(db, truck)
+                if not needle
+                else sum(1 for it in items if it.queue_status != FIFO_STATUS_READY),
+                current_allowed_queue_number=allowed,
+                items=items,
+            )
+        )
+    if needle:
+        types = [q.truck_type for q in queues]
+    exited_recent = _fifo_exited_recent(db, needle=needle)
+    return FifoDashboardResponse(queues=queues, truck_types=types, exited_recent=exited_recent)
+
+
+def _fifo_exited_recent(db: Session, *, needle: str = "", limit: int = 48) -> list[FifoExitedItem]:
+    rows = db.execute(
+        select(ParkingSession, VehicleProfile)
+        .outerjoin(VehicleProfile, VehicleProfile.id == ParkingSession.vehicle_profile_id)
+        .where(
+            ParkingSession.exited_at.is_not(None),
+            ParkingSession.fifo_queue_number.isnot(None),
+        )
+        .order_by(ParkingSession.exited_at.desc())
+        .limit(limit)
+    ).all()
+    out: list[FifoExitedItem] = []
+    for sess, prof in rows:
+        plate = sess.license_plate or ""
+        truck = sess.fifo_truck_type or DEFAULT_TRUCK_TYPE
+        driver = prof.driver_name if prof else None
+        company = prof.partnership_company if prof else None
+        if needle:
+            hay = " ".join(
+                filter(
+                    None,
+                    [
+                        str(sess.fifo_queue_number),
+                        truck,
+                        plate,
+                        driver or "",
+                        company or "",
+                        sess.receipt_code,
+                    ],
+                )
+            ).lower()
+            if needle not in hay:
+                continue
+        out.append(
+            FifoExitedItem(
+                license_plate=plate,
+                fifo_queue_number=sess.fifo_queue_number,
+                fifo_truck_type=truck,
+                driver_name=driver,
+                partnership_company=company,
+                exited_at=sess.exited_at,
+                receipt_code=sess.receipt_code,
+            )
+        )
+    return out
+
+
+def _ensure_no_active_session_conflict(
+    db: Session, plate_upper: str, vehicle_profile_id: int | None = None
+) -> None:
+    or_parts = [func.lower(ParkingSession.license_plate) == func.lower(plate_upper)]
+    if vehicle_profile_id is not None:
+        or_parts.append(ParkingSession.vehicle_profile_id == vehicle_profile_id)
+    dup = db.scalar(
+        select(ParkingSession.id).where(
+            ParkingSession.exited_at.is_(None),
+            or_(*or_parts),
+        )
+    )
+    if dup is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="هذه اللوحة أو بطاقة البروفايل مسجّلة داخل الموقف حاليًا. أكمِل الخروج أولًا.",
+        )
+
+
+def _pick_vehicle_photo_extension(filename: str, content_type: str | None) -> str:
+    fn = (filename or "").lower()
+    for ext in (".jpg", ".jpeg", ".png", ".webp"):
+        if fn.endswith(ext):
+            return ".jpg" if ext == ".jpeg" else ext
+    ct = (content_type or "").lower()
+    if "png" in ct:
+        return ".png"
+    if "webp" in ct:
+        return ".webp"
+    return ".jpg"
+
+
+@app.get("/api/settings", response_model=SettingsResponse)
+def read_settings(
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    s = get_settings_row(db)
+    occ = len(occupied_slot_numbers(db))
+    avail = max(0, s.total_slots - occ)
+    return SettingsResponse(
+        total_slots=s.total_slots,
+        price_per_hour_cents=s.price_per_hour_cents,
+        occupied_slots=occ,
+        available_slots=avail,
+    )
+
+
+@app.put("/api/settings", response_model=SettingsResponse)
+def update_settings(
+    body: SettingsUpdate,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    s = get_settings_row(db)
+    occ = len(occupied_slot_numbers(db))
+    if body.total_slots < occ:
+        raise HTTPException(
+            status_code=400,
+            detail=f"لا يمكن تقليل عدد الأماكن عن عدد السيارات المركونة حاليًا ({occ}).",
+        )
+    s.total_slots = body.total_slots
+    s.price_per_hour_cents = body.price_per_hour_cents
+    db.commit()
+    db.refresh(s)
+    avail = max(0, s.total_slots - occ)
+    return SettingsResponse(
+        total_slots=s.total_slots,
+        price_per_hour_cents=s.price_per_hour_cents,
+        occupied_slots=occ,
+        available_slots=avail,
+    )
+
+
+@app.post("/api/check-in", response_model=CheckInResponse)
+def check_in(
+    body: CheckInRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    _user: User = Depends(require_check_in),
+):
+    s = get_settings_row(db)
+    if s.total_slots <= 0:
+        raise HTTPException(status_code=400, detail="لم يتم تهيئة سعة الموقف.")
+    slot = next_free_slot(db, s.total_slots)
+    if slot is None:
+        raise HTTPException(status_code=400, detail="لا توجد أماكن شاغرة.")
+
+    plate = body.license_plate.strip().upper()
+    if not plate or len(plate) > 32:
+        raise HTTPException(status_code=400, detail="رقم اللوحة غير صالح.")
+    if not _optional_profile_text(body.vehicle_type, 64):
+        raise HTTPException(status_code=400, detail="نوع الشاحنة مطلوب.")
+    if not _optional_profile_text(body.driver_name, 128):
+        raise HTTPException(status_code=400, detail="اسم السائق مطلوب.")
+    if not _optional_profile_text(body.partnership_company, 128):
+        raise HTTPException(status_code=400, detail="اسم الشركة مطلوب.")
+    mech = _mechanical_number(body.mechanical_number)
+    dup_filters = [func.lower(VehicleProfile.license_plate) == func.lower(plate)]
+    if mech:
+        dup_filters.append(func.lower(VehicleProfile.mechanical_number) == func.lower(mech))
+    dup_profile = db.scalar(select(VehicleProfile.id).where(or_(*dup_filters)))
+    if dup_profile is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="اللوحة أو رقم الميكانيك مسجّل مسبقًا في بروفايل مركبة. استخدم مسح بطاقة الـ QR أو أدخل مركبة غير مسجّلة.",
+        )
+    _ensure_no_active_session_conflict(db, plate, None)
+
+    token = str(uuid.uuid4())
+    now = utc_now()
+    prof = VehicleProfile(
+        public_token=token,
+        license_plate=plate,
+        vehicle_make=_optional_profile_text(body.vehicle_make, 64),
+        vehicle_type=_optional_profile_text(body.vehicle_type, 64),
+        vehicle_color=_optional_profile_text(body.vehicle_color, 32),
+        driver_name=_optional_profile_text(body.driver_name, 128),
+        owner_name=_optional_profile_text(body.owner_name, 128),
+        partnership_company=_optional_profile_text(body.partnership_company, 128),
+        mechanical_number=mech,
+        photo_path=None,
+        created_at=now,
+    )
+    db.add(prof)
+    db.flush()
+    _ensure_no_active_session_conflict(db, plate, prof.id)
+
+    try:
+        receipt = allocate_unique_receipt_code(db)
+    except RuntimeError:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="تعذّر إنشاء رمز إيصال. أعد المحاولة.",
+        ) from None
+    notes_parts = []
+    if body.notes and body.notes.strip():
+        notes_parts.append(body.notes.strip())
+    notes_parts.append(f"بروفايل #{prof.id} (تسجيل يدوي من الموظف)")
+    session_row = _create_active_session(
+        db,
+        prof=prof,
+        plate=plate,
+        slot=slot,
+        receipt=receipt,
+        now=now,
+        notes="\n".join(notes_parts),
+        truck_type=prof.vehicle_type,
+    )
+    db.commit()
+    db.refresh(session_row)
+    db.refresh(prof)
+    total_profiles = db.scalar(select(func.count()).select_from(VehicleProfile))
+    if total_profiles is None:
+        total_profiles = 1
+    qr_payload = _vehicle_qr_payload(token)
+    return _checkin_response_from_session(
+        db,
+        session_row,
+        prof,
+        public_token=token,
+        registration_order=int(total_profiles),
+        qr_payload=qr_payload,
+    )
+
+
+@app.post("/api/check-out", response_model=CheckOutResponse)
+def check_out(
+    body: CheckOutRequest,
+    db: Session = Depends(get_db),
+    _user: User = Depends(require_check_out),
+):
+    code = body.receipt_code.strip()
+    row = db.scalar(
+        select(ParkingSession).where(
+            func.lower(ParkingSession.receipt_code) == func.lower(code)
+        )
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="لم يُعثر على الإيصال.")
+    return _finalize_checkout_session(db, row)
+
+
+@app.get("/api/sessions/active", response_model=list[SessionHistoryItem])
+def list_active(
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    q = (
+        select(ParkingSession)
+        .where(ParkingSession.exited_at.is_(None))
+        .order_by(ParkingSession.entered_at.desc())
+    )
+    rows = db.scalars(q).all()
+    return [
+        SessionHistoryItem(
+            receipt_code=r.receipt_code,
+            license_plate=r.license_plate,
+            slot_number=r.slot_number,
+            entered_at=r.entered_at,
+            exited_at=r.exited_at,
+            hours_billed=r.hours_billed,
+            amount_due_cents=r.amount_due_cents,
+            paid=r.paid,
+        )
+        for r in rows
+    ]
+
+
+@app.get("/api/sessions/history", response_model=list[SessionHistoryItem])
+def list_history(
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    limit = min(max(limit, 1), 500)
+    q = (
+        select(ParkingSession)
+        .where(ParkingSession.exited_at.is_not(None))
+        .order_by(ParkingSession.exited_at.desc())
+        .limit(limit)
+    )
+    rows = db.scalars(q).all()
+    return [
+        SessionHistoryItem(
+            receipt_code=r.receipt_code,
+            license_plate=r.license_plate,
+            slot_number=r.slot_number,
+            entered_at=r.entered_at,
+            exited_at=r.exited_at,
+            hours_billed=r.hours_billed,
+            amount_due_cents=r.amount_due_cents,
+            paid=r.paid,
+        )
+        for r in rows
+    ]
+
+
+@app.get("/api/stats/month", response_model=MonthStatsResponse)
+def month_checkout_stats(
+    year: int | None = Query(default=None, ge=2000, le=2100),
+    month: int | None = Query(default=None, ge=1, le=12),
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """دخول حسب تاريخ دمشق لوقت الدخول؛ خروج وإيراد حسب تاريخ دمشق لوقت الخروج."""
+    today = damascus_today_date()
+    y = year if year is not None else today.year
+    m = month if month is not None else today.month
+    return build_month_stats_response(db, y, m)
+
+
+@app.get("/api/stats/month/export")
+def export_month_stats_xlsx(
+    year: int | None = Query(default=None, ge=2000, le=2100),
+    month: int | None = Query(default=None, ge=1, le=12),
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    today = damascus_today_date()
+    y = year if year is not None else today.year
+    m = month if month is not None else today.month
+    stats = build_month_stats_response(db, y, m)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"{y}-{m:02d}"
+
+    ws.append(["اليوم", "دخول", "خروج", "إيراد جديد", "إيراد قديم"])
+    for d in stats.days:
+        ws.append(
+            [
+                d.day,
+                d.entry_count,
+                d.checkout_count,
+                d.revenue_syp_new,
+                int(round(d.revenue_syp_new * 100)),
+            ]
+        )
+    ws.append([])
+    ws.append(
+        [
+            "الإجمالي",
+            stats.total_entries,
+            stats.total_checkouts,
+            stats.total_revenue_syp_new,
+            int(round(stats.total_revenue_syp_new * 100)),
+        ]
+    )
+
+    bio = BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    fname = f"parking-stats-{y}-{m:02d}.xlsx"
+    return Response(
+        content=bio.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="{fname}"; filename*=UTF-8\'\'{fname}',
+        },
+    )
+
+
+@app.get("/api/sessions/log", response_model=list[SessionHistoryItem])
+def list_sessions_log(
+    limit: int = 200,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    """كل التذاكر: الأحدث دخولًا أولًا (داخل الموقف أو خرجت)."""
+    limit = min(max(limit, 1), 500)
+    q = select(ParkingSession).order_by(ParkingSession.entered_at.desc()).limit(limit)
+    rows = db.scalars(q).all()
+    return [
+        SessionHistoryItem(
+            receipt_code=r.receipt_code,
+            license_plate=r.license_plate,
+            slot_number=r.slot_number,
+            entered_at=r.entered_at,
+            exited_at=r.exited_at,
+            hours_billed=r.hours_billed,
+            amount_due_cents=r.amount_due_cents,
+            paid=r.paid,
+        )
+        for r in rows
+    ]
+
+
+@app.get("/CarRegistration")
+def serve_car_registration_page():
+    path = STATIC_DIR / "CarRegistration.html"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="صفحة CarRegistration غير موجودة.")
+    return FileResponse(path)
+
+
+@app.get("/driver")
+def redirect_legacy_driver_page():
+    return RedirectResponse(url="/CarRegistration", status_code=302)
+
+
+@app.post("/api/public/vehicle-profile", response_model=VehiclePublicRegisterResponse)
+async def public_register_vehicle_profile(
+    request: Request,
+    license_plate: str = Form(...),
+    vehicle_make: str | None = Form(None),
+    vehicle_type: str | None = Form(None),
+    vehicle_color: str | None = Form(None),
+    driver_name: str | None = Form(None),
+    owner_name: str | None = Form(None),
+    partnership_company: str | None = Form(None),
+    mechanical_number: str | None = Form(None),
+    photo: UploadFile | None = File(None),
+    db: Session = Depends(get_db),
+):
+    plate = license_plate.strip().upper()
+    if not plate or len(plate) > 32:
+        raise HTTPException(status_code=400, detail="رقم اللوحة غير صالح.")
+    mech = _mechanical_number(mechanical_number)
+    dup_plate = db.scalar(
+        select(VehicleProfile.id).where(
+            func.lower(VehicleProfile.license_plate) == func.lower(plate)
+        )
+    )
+    if dup_plate is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="هذه اللوحة مسجّلة مسبقًا. إن كانت سيارتك فقد تم إنشاء البروفايل سابقًا.",
+        )
+    if mech:
+        dup_mech = db.scalar(
+            select(VehicleProfile.id).where(
+                func.lower(VehicleProfile.mechanical_number) == func.lower(mech)
+            )
+        )
+        if dup_mech is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="رقم الميكانيك مسجّل مسبقًا لمركبة أخرى في النظام.",
+            )
+    photo_bytes: bytes | None = None
+    photo_ext: str | None = None
+    if photo is not None and photo.filename:
+        photo_bytes = await photo.read()
+        if photo_bytes:
+            if len(photo_bytes) < 32:
+                raise HTTPException(status_code=400, detail="ملف الصورة غير صالح.")
+            if len(photo_bytes) > MAX_VEHICLE_PHOTO_BYTES:
+                raise HTTPException(status_code=413, detail="حجم الصورة كبير جدًا (الحد 5 ميجابايت).")
+            photo_ext = _pick_vehicle_photo_extension(photo.filename or "", photo.content_type)
+            if photo_ext == ".jpeg":
+                photo_ext = ".jpg"
+            if photo_ext not in ALLOWED_VEHICLE_PHOTO_EXT:
+                photo_ext = ".jpg"
+    token = str(uuid.uuid4())
+    now = utc_now()
+    prof = VehicleProfile(
+        public_token=token,
+        license_plate=plate,
+        vehicle_make=_optional_profile_text(vehicle_make, 64),
+        vehicle_type=_optional_profile_text(vehicle_type, 64),
+        vehicle_color=_optional_profile_text(vehicle_color, 32),
+        driver_name=_optional_profile_text(driver_name, 128),
+        owner_name=_optional_profile_text(owner_name, 128),
+        partnership_company=_optional_profile_text(partnership_company, 128),
+        mechanical_number=mech,
+        photo_path=None,
+        created_at=now,
+    )
+    db.add(prof)
+    db.flush()
+    if photo_bytes and photo_ext:
+        fn = f"{prof.id}_{token[:8]}{photo_ext}"
+        rel = f"uploads/vehicle_photos/{fn}".replace("\\", "/")
+        abs_p = BASE_APP_DIR / rel
+        abs_p.parent.mkdir(parents=True, exist_ok=True)
+        with open(abs_p, "wb") as f:
+            f.write(photo_bytes)
+        prof.photo_path = rel
+    db.commit()
+    db.refresh(prof)
+    total_profiles = db.scalar(select(func.count()).select_from(VehicleProfile))
+    if total_profiles is None:
+        total_profiles = 1
+    qr_payload = _vehicle_qr_payload(token)
+    return VehiclePublicRegisterResponse(
+        profile_id=prof.id,
+        public_token=token,
+        qr_payload=qr_payload,
+        registration_order=int(total_profiles),
+        license_plate=plate,
+        vehicle_make=prof.vehicle_make,
+        vehicle_type=prof.vehicle_type,
+        vehicle_color=prof.vehicle_color,
+        driver_name=prof.driver_name,
+        owner_name=prof.owner_name,
+        partnership_company=prof.partnership_company,
+        mechanical_number=mech or None,
+    )
+
+
+@app.get("/api/vehicle-profiles/{profile_id:int}/photo")
+def vehicle_profile_photo(
+    profile_id: int,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    p = db.get(VehicleProfile, profile_id)
+    if p is None or not p.photo_path:
+        raise HTTPException(status_code=404, detail="الصورة غير موجودة.")
+    full = BASE_APP_DIR / p.photo_path
+    if not full.is_file():
+        raise HTTPException(status_code=404, detail="الصورة غير موجودة على الخادم.")
+    mime, _ = mimetypes.guess_type(str(full))
+    return FileResponse(full, media_type=mime or "application/octet-stream")
+
+
+def _vehicle_profile_search_filters(term: str):
+    """مطابقة جزئية غير حساسة لحالة الأحرف على حقول البروفايل."""
+    raw = term.strip()
+    if not raw:
+        return None
+    lowered = raw.lower()
+    plate_prefix = lowered.replace(" ", "")
+    clauses = []
+
+    def _contains(column):
+        return func.coalesce(func.lower(column), "").like(f"%{lowered}%")
+
+    clauses.extend(
+        [
+            _contains(VehicleProfile.license_plate),
+            _contains(VehicleProfile.mechanical_number),
+            _contains(VehicleProfile.vehicle_make),
+            _contains(VehicleProfile.vehicle_type),
+            _contains(VehicleProfile.vehicle_color),
+            _contains(VehicleProfile.driver_name),
+            _contains(VehicleProfile.owner_name),
+            _contains(VehicleProfile.partnership_company),
+        ]
+    )
+    if len(plate_prefix) >= 2:
+        clauses.append(func.coalesce(func.lower(VehicleProfile.license_plate), "").like(f"{plate_prefix}%"))
+    return or_(*clauses)
+
+
+def _vehicle_profile_list_filters(
+    q: str | None,
+    vehicle_type: str | None,
+    partnership_company: str | None,
+    has_photo: bool | None,
+):
+    clauses = []
+    if q and q.strip():
+        clauses.append(_vehicle_profile_search_filters(q))
+    if vehicle_type and vehicle_type.strip():
+        clauses.append(VehicleProfile.vehicle_type == vehicle_type.strip())
+    if partnership_company and partnership_company.strip():
+        clauses.append(VehicleProfile.partnership_company == partnership_company.strip())
+    if has_photo is True:
+        clauses.append(VehicleProfile.photo_path.isnot(None))
+        clauses.append(VehicleProfile.photo_path != "")
+    elif has_photo is False:
+        clauses.append(or_(VehicleProfile.photo_path.is_(None), VehicleProfile.photo_path == ""))
+    if not clauses:
+        return None
+    return clauses[0] if len(clauses) == 1 else and_(*clauses)
+
+
+def _apply_vehicle_profile_filters(stmt, q, vehicle_type, partnership_company, has_photo):
+    filt = _vehicle_profile_list_filters(q, vehicle_type, partnership_company, has_photo)
+    if filt is not None:
+        stmt = stmt.where(filt)
+    return stmt
+
+
+def _vehicle_profile_registration_order_subquery():
+    vp_rank = aliased(VehicleProfile)
+    return (
+        select(func.count())
+        .select_from(vp_rank)
+        .where(vp_rank.id <= VehicleProfile.id)
+        .scalar_subquery()
+    )
+
+
+def _vehicle_profile_list_item(r: VehicleProfile, registration_order: int) -> VehicleProfileListItem:
+    return VehicleProfileListItem(
+        id=r.id,
+        public_token=r.public_token,
+        license_plate=r.license_plate,
+        vehicle_make=r.vehicle_make,
+        vehicle_type=r.vehicle_type,
+        vehicle_color=r.vehicle_color,
+        driver_name=r.driver_name,
+        owner_name=r.owner_name,
+        partnership_company=r.partnership_company,
+        mechanical_number=_mechanical_number(r.mechanical_number) or None,
+        has_photo=bool(r.photo_path),
+        created_at=r.created_at,
+        qr_payload=_vehicle_qr_payload(r.public_token),
+        registration_order=registration_order,
+    )
+
+
+VEHICLE_PROFILES_PAGE_SIZE_DEFAULT = 50
+VEHICLE_PROFILES_PAGE_SIZE_MAX = 100
+VEHICLE_PROFILES_FILTER_OPTIONS_LIMIT = 120
+
+
+@app.get("/api/vehicle-profiles/meta", response_model=VehicleProfileFiltersMeta)
+def vehicle_profiles_meta(
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    """خيارات الفلاتر وإجمالي المركبات (بدون تحميل القائمة كاملة)."""
+    total = db.scalar(select(func.count()).select_from(VehicleProfile)) or 0
+    type_rows = db.execute(
+        select(VehicleProfile.vehicle_type, func.count())
+        .where(VehicleProfile.vehicle_type.isnot(None), VehicleProfile.vehicle_type != "")
+        .group_by(VehicleProfile.vehicle_type)
+        .order_by(func.count().desc(), VehicleProfile.vehicle_type.asc())
+        .limit(VEHICLE_PROFILES_FILTER_OPTIONS_LIMIT)
+    ).all()
+    company_rows = db.execute(
+        select(VehicleProfile.partnership_company, func.count())
+        .where(
+            VehicleProfile.partnership_company.isnot(None),
+            VehicleProfile.partnership_company != "",
+        )
+        .group_by(VehicleProfile.partnership_company)
+        .order_by(func.count().desc(), VehicleProfile.partnership_company.asc())
+        .limit(VEHICLE_PROFILES_FILTER_OPTIONS_LIMIT)
+    ).all()
+    return VehicleProfileFiltersMeta(
+        total=int(total),
+        vehicle_types=[
+            VehicleProfileFilterOption(value=str(name), count=int(cnt)) for name, cnt in type_rows
+        ],
+        partnership_companies=[
+            VehicleProfileFilterOption(value=str(name), count=int(cnt)) for name, cnt in company_rows
+        ],
+    )
+
+
+@app.get("/api/vehicle-profiles", response_model=VehicleProfileListResponse)
+def list_vehicle_profiles(
+    request: Request,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(VEHICLE_PROFILES_PAGE_SIZE_DEFAULT, ge=1, le=VEHICLE_PROFILES_PAGE_SIZE_MAX),
+    q: str | None = Query(None, max_length=120),
+    vehicle_type: str | None = Query(None, max_length=64),
+    partnership_company: str | None = Query(None, max_length=128),
+    has_photo: bool | None = Query(None),
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    """بروفايلات المركبات مع ترقيم صفحات وبحث/فلاتر من الخادم."""
+    count_stmt = select(func.count()).select_from(VehicleProfile)
+    count_stmt = _apply_vehicle_profile_filters(
+        count_stmt, q, vehicle_type, partnership_company, has_photo
+    )
+    total = int(db.scalar(count_stmt) or 0)
+    total_pages = max(1, (total + page_size - 1) // page_size) if total else 1
+    page = min(page, total_pages) if total else 1
+    offset = (page - 1) * page_size
+
+    reg_order = _vehicle_profile_registration_order_subquery().label("registration_order")
+    stmt = select(VehicleProfile, reg_order).order_by(
+        VehicleProfile.created_at.desc(), VehicleProfile.id.desc()
+    )
+    stmt = _apply_vehicle_profile_filters(stmt, q, vehicle_type, partnership_company, has_photo)
+    rows = db.execute(stmt.offset(offset).limit(page_size)).all()
+    items = [
+        _vehicle_profile_list_item(r, int(reg)) for r, reg in rows
+    ]
+    return VehicleProfileListResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+    )
+
+
+@app.get("/api/employee/vehicle-scan/{token}", response_model=VehicleScanResponse)
+def employee_vehicle_scan(
+    token: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    t = token.strip()
+    if len(t) < 8:
+        raise HTTPException(status_code=400, detail="رمز غير صالح.")
+    prof = db.scalar(select(VehicleProfile).where(VehicleProfile.public_token == t))
+    if prof is None:
+        raise HTTPException(status_code=404, detail="لم يُعثر على بروفايل بهذا الرمز.")
+    active = db.scalar(
+        select(ParkingSession).where(
+            ParkingSession.vehicle_profile_id == prof.id,
+            ParkingSession.exited_at.is_(None),
+        )
+    )
+    inside = active is not None
+    if inside and not role_can_check_out(user.role):
+        raise HTTPException(
+            status_code=403,
+            detail="هذه المركبة داخل الموقف. مسح الخروج متاح لحساب موظف الإخراج فقط.",
+        )
+    if not inside and not role_can_check_in(user.role):
+        raise HTTPException(
+            status_code=403,
+            detail="المركبة غير داخل الموقف. مسح الدخول متاح لحساب موظف الإدخال فقط.",
+        )
+    brief = None
+    fifo_status = None
+    if active is not None:
+        brief = ActiveSessionBrief(
+            receipt_code=active.receipt_code,
+            entered_at=active.entered_at,
+            slot_number=active.slot_number,
+            license_plate=active.license_plate,
+            fifo_queue_number=active.fifo_queue_number,
+            fifo_truck_type=active.fifo_truck_type,
+        )
+        fifo_status = _fifo_status_for_session(db, active)
+    return VehicleScanResponse(
+        inside=inside,
+        profile=_profile_public(prof),
+        active_session=brief,
+        fifo=fifo_status,
+    )
+
+
+@app.post("/api/employee/vehicle-check-in", response_model=CheckInResponse)
+def employee_vehicle_check_in(
+    body: VehicleTokenBody,
+    db: Session = Depends(get_db),
+    _user: User = Depends(require_check_in),
+):
+    t = body.public_token.strip()
+    prof = db.scalar(select(VehicleProfile).where(VehicleProfile.public_token == t))
+    if prof is None:
+        raise HTTPException(status_code=404, detail="بروفايل المركبة غير معروف.")
+    s = get_settings_row(db)
+    if s.total_slots <= 0:
+        raise HTTPException(status_code=400, detail="لم يتم تهيئة سعة الموقف.")
+    slot = next_free_slot(db, s.total_slots)
+    if slot is None:
+        raise HTTPException(status_code=400, detail="لا توجد أماكن شاغرة.")
+    _ensure_no_active_session_conflict(db, prof.license_plate, prof.id)
+    try:
+        receipt = allocate_unique_receipt_code(db)
+    except RuntimeError:
+        raise HTTPException(
+            status_code=500,
+            detail="تعذّر إنشاء رمز إيصال. أعد المحاولة.",
+        ) from None
+    now = utc_now()
+    session_row = _create_active_session(
+        db,
+        prof=prof,
+        plate=prof.license_plate,
+        slot=slot,
+        receipt=receipt,
+        now=now,
+        notes=f"بروفايل #{prof.id}",
+        truck_type=prof.vehicle_type,
+    )
+    db.commit()
+    db.refresh(session_row)
+    return _checkin_response_from_session(db, session_row, prof)
+
+
+@app.post("/api/employee/vehicle-check-out", response_model=CheckOutResponse)
+def employee_vehicle_check_out(
+    body: VehicleTokenBody,
+    db: Session = Depends(get_db),
+    _user: User = Depends(require_check_out),
+):
+    t = body.public_token.strip()
+    prof = db.scalar(select(VehicleProfile).where(VehicleProfile.public_token == t))
+    if prof is None:
+        raise HTTPException(status_code=404, detail="بروفايل المركبة غير معروف.")
+    row = db.scalar(
+        select(ParkingSession).where(
+            ParkingSession.vehicle_profile_id == prof.id,
+            ParkingSession.exited_at.is_(None),
+        )
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=400,
+            detail="لا توجد جلسة دخول نشطة لهذه المركبة داخل الموقف.",
+        )
+    return _finalize_checkout_session(db, row)
+
+
+def _force_close_profile_sessions(db: Session, profile_id: int) -> int:
+    """إغلاق أي جلسة نشطة لبروفايل قبل الحذف الإجباري."""
+    rows = db.scalars(
+        select(ParkingSession).where(
+            ParkingSession.vehicle_profile_id == profile_id,
+            ParkingSession.exited_at.is_(None),
+        )
+    ).all()
+    if not rows:
+        return 0
+    s = get_settings_row(db)
+    now = utc_now()
+    for row in rows:
+        days = billable_days(row.entered_at, now)
+        row.exited_at = now
+        row.hours_billed = float(days)
+        row.amount_due_cents = amount_due_cents(s.price_per_hour_cents, days)
+        row.paid = True
+    return len(rows)
+
+
+@app.delete("/api/admin/vehicle-profiles/{profile_id:int}", response_model=OkResponse)
+def admin_delete_vehicle_profile(
+    profile_id: int,
+    force: bool = Query(False, description="إغلاق الجلسة النشطة ثم الحذف"),
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    prof = db.get(VehicleProfile, profile_id)
+    if prof is None:
+        raise HTTPException(status_code=404, detail="بروفايل المركبة غير موجود.")
+    active = db.scalar(
+        select(ParkingSession.id).where(
+            ParkingSession.vehicle_profile_id == prof.id,
+            ParkingSession.exited_at.is_(None),
+        )
+    )
+    if active is not None and not force:
+        raise HTTPException(
+            status_code=400,
+            detail="المركبة داخل الموقف حاليًا. أكمِل الخروج أولًا، أو استخدم الحذف الإجباري.",
+        )
+    if active is not None and force:
+        _force_close_profile_sessions(db, prof.id)
+    db.execute(
+        update(ParkingSession)
+        .where(ParkingSession.vehicle_profile_id == prof.id)
+        .values(vehicle_profile_id=None)
+    )
+    if prof.photo_path:
+        full = BASE_APP_DIR / prof.photo_path
+        try:
+            if full.is_file():
+                full.unlink()
+        except OSError:
+            pass
+    db.delete(prof)
+    db.commit()
+    return OkResponse()
+
+
+def _admin_fifo_release_limits(
+    db: Session, limits: dict[str, int]
+) -> dict[str, int]:
+    released: dict[str, int] = {}
+    for raw_type, lim in limits.items():
+        if lim <= 0:
+            continue
+        t = normalize_truck_type(raw_type.strip())
+        n = release_fifo_sessions(db, t, lim)
+        if n > 0:
+            released[t] = n
+    if not released:
+        raise HTTPException(
+            status_code=400,
+            detail="لا توجد مركبات في الطوابير المحددة لتحرير الخروج.",
+        )
+    db.commit()
+    return released
+
+
+@app.post("/api/admin/fifo/release", response_model=FifoReleaseResponse)
+def admin_fifo_release(
+    body: FifoBatchExportRequest,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """يُحرّر أول N مركبة في كل طابور للخروج عبر QR أو الإخراج اليدوي."""
+    return FifoReleaseResponse(released=_admin_fifo_release_limits(db, body.limits))
+
+
+@app.get("/api/fifo/dashboard", response_model=FifoDashboardResponse)
+def fifo_dashboard(
+    q: str | None = Query(None, max_length=120),
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    return _build_fifo_dashboard(db, q)
+
+
+def _fifo_pdf_filename(truck_type: str | None, ext: str = ".pdf") -> tuple[str, str]:
+    """اسم ملف ASCII آمن + عنوان عربي للتقرير."""
+    if truck_type and truck_type.strip():
+        t = normalize_truck_type(truck_type)
+        slug = "".join(c if c.isalnum() else "_" for c in t).strip("_") or "type"
+        return f"fifo-{slug}{ext}", f"أدوار الخروج — {t}"
+    return f"fifo-all{ext}", "أدوار الخروج — جميع الأنواع"
+
+
+def _fifo_pdf_title_limited(truck_type: str, limit: int, total: int) -> str:
+    t = normalize_truck_type(truck_type)
+    shown = min(limit, total)
+    if shown < total:
+        return f"أدوار الخروج — {t} (أول {shown})"
+    return f"أدوار الخروج — {t}"
+
+
+def _fifo_queue_to_pdf_dict(qrow: FifoTypeQueue, *, limit: int | None = None) -> dict:
+    items = qrow.items
+    export_limit: int | None = None
+    if limit is not None and limit > 0:
+        export_limit = limit
+        items = items[:limit]
+    allowed = qrow.current_allowed_queue_number
+    return {
+        "truck_type": qrow.truck_type,
+        "waiting_count": len(items),
+        "total_waiting": qrow.waiting_count,
+        "export_limit": export_limit,
+        "current_allowed_queue_number": allowed,
+        "items": [
+            {
+                "fifo_queue_number": it.fifo_queue_number,
+                "license_plate": it.license_plate,
+                "driver_name": it.driver_name,
+                "partnership_company": it.partnership_company,
+                "fifo_truck_type": it.fifo_truck_type,
+                "entered_at_display": _format_damascus_dt(it.entered_at),
+                "is_current_turn": it.is_current_turn,
+                "queue_status": it.queue_status,
+                "status_label": queue_status_label(it.queue_status),
+            }
+            for it in items
+        ],
+    }
+
+
+def _build_fifo_export_bytes(
+    queues: list[FifoTypeQueue],
+    *,
+    title: str,
+    limits: dict[str, int] | None = None,
+    export_format: str = "xlsx",
+) -> tuple[bytes, str, str]:
+    """يُرجع (محتوى الملف، نوع MIME، لاحقة الملف). export_format: pdf أو xlsx."""
+    pdf_queues = []
+    for qrow in queues:
+        lim = None
+        if limits is not None:
+            lim = limits.get(qrow.truck_type)
+        pdf_queues.append(_fifo_queue_to_pdf_dict(qrow, limit=lim))
+    exported_at = damascus_now()
+    want_pdf = export_format == "pdf"
+
+    if want_pdf:
+        try:
+            from app.fifo_pdf import build_fifo_queues_pdf
+
+            body = build_fifo_queues_pdf(
+                title=title,
+                exported_at=exported_at,
+                queues=pdf_queues,
+            )
+            return body, "application/pdf", ".pdf"
+        except Exception:
+            from app.fifo_xlsx import build_fifo_queues_xlsx
+
+            body = build_fifo_queues_xlsx(
+                title=title,
+                exported_at=exported_at,
+                queues=pdf_queues,
+            )
+            return (
+                body,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ".xlsx",
+            )
+
+    try:
+        from app.fifo_xlsx import build_fifo_queues_xlsx
+
+        body = build_fifo_queues_xlsx(
+            title=title,
+            exported_at=exported_at,
+            queues=pdf_queues,
+        )
+        return (
+            body,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ".xlsx",
+        )
+    except Exception:
+        from app.fifo_pdf import build_fifo_queues_pdf
+
+        body = build_fifo_queues_pdf(
+            title=title,
+            exported_at=exported_at,
+            queues=pdf_queues,
+        )
+        return body, "application/pdf", ".pdf"
+
+
+@app.get("/api/fifo/export")
+@app.get("/api/fifo/export.pdf")
+@app.get("/api/fifo/export.xlsx")
+def fifo_export_pdf(
+    request: Request,
+    truck_type: str | None = Query(None, max_length=64),
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    dash = _build_fifo_dashboard(db, None)
+    if truck_type and truck_type.strip():
+        t = normalize_truck_type(truck_type)
+        queues = [q for q in dash.queues if q.truck_type == t]
+        title = _fifo_pdf_filename(t)[1]
+    else:
+        queues = dash.queues
+        title = _fifo_pdf_filename(None)[1]
+    if not queues:
+        raise HTTPException(status_code=404, detail="لا توجد مركبات في الطابور المطلوب.")
+    path = request.url.path.rstrip("/")
+    export_format = "pdf" if path.endswith(".pdf") else "xlsx"
+    body, media_type, ext = _build_fifo_export_bytes(
+        queues, title=title, export_format=export_format
+    )
+    filename, _ = _fifo_pdf_filename(
+        normalize_truck_type(truck_type) if truck_type and truck_type.strip() else None,
+        ext,
+    )
+    return Response(
+        content=body,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@app.get("/api/admin/fifo/export")
+def admin_fifo_export_limited_pdf(
+    truck_type: str = Query(..., max_length=64),
+    limit: int = Query(..., ge=1, le=10_000),
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    t = normalize_truck_type(truck_type)
+    dash = _build_fifo_dashboard(db, None)
+    qrow = next((q for q in dash.queues if q.truck_type == t), None)
+    if qrow is None or not qrow.items:
+        raise HTTPException(status_code=404, detail=f"لا توجد مركبات في طابور «{t}».")
+    release_fifo_sessions(db, t, limit)
+    db.commit()
+    dash = _build_fifo_dashboard(db, None)
+    qrow = next((q for q in dash.queues if q.truck_type == t), None)
+    if qrow is None or not qrow.items:
+        raise HTTPException(status_code=404, detail=f"لا توجد مركبات في طابور «{t}».")
+    actual = min(limit, len(qrow.items))
+    title = _fifo_pdf_title_limited(t, actual, qrow.waiting_count)
+    body, media_type, ext = _build_fifo_export_bytes(
+        [qrow], title=title, limits={t: actual}, export_format="xlsx"
+    )
+    slug = "".join(c if c.isalnum() else "_" for c in t).strip("_") or "type"
+    filename = f"fifo-{slug}-first-{actual}{ext}"
+    return Response(
+        content=body,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@app.post("/api/admin/fifo/export-batch")
+def admin_fifo_export_batch_zip(
+    body: FifoBatchExportRequest,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    if not body.limits:
+        raise HTTPException(status_code=400, detail="حدّد عددًا واحدًا على الأقل.")
+    _admin_fifo_release_limits(db, body.limits)
+    dash = _build_fifo_dashboard(db, None)
+    by_type = {q.truck_type: q for q in dash.queues}
+    export_files: list[tuple[str, bytes, str]] = []
+    for raw_type, lim in body.limits.items():
+        if lim <= 0:
+            continue
+        t = normalize_truck_type(raw_type.strip())
+        qrow = by_type.get(t)
+        if qrow is None or not qrow.items:
+            continue
+        actual = min(lim, len(qrow.items))
+        title = _fifo_pdf_title_limited(t, actual, qrow.waiting_count)
+        file_body, media_type, ext = _build_fifo_export_bytes(
+            [qrow], title=title, limits={t: actual}, export_format="xlsx"
+        )
+        slug = "".join(c if c.isalnum() else "_" for c in t).strip("_") or "type"
+        export_files.append((f"fifo-{slug}-first-{actual}{ext}", file_body, media_type))
+    if not export_files:
+        raise HTTPException(
+            status_code=400,
+            detail="لا توجد أنواع أو أعداد صالحة للتصدير. تحقق من الأنواع والأعداد.",
+        )
+    if len(export_files) == 1:
+        name, content, media_type = export_files[0]
+        return Response(
+            content=content,
+            media_type=media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{name}"',
+                "Cache-Control": "no-store",
+            },
+        )
+    zip_buf = BytesIO()
+    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, content, _media in export_files:
+            zf.writestr(name, content)
+    stamp = damascus_now().strftime("%Y%m%d-%H%M")
+    return Response(
+        content=zip_buf.getvalue(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="fifo-export-{stamp}.zip"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+@app.get("/favicon.svg", include_in_schema=False)
+def favicon():
+    svg = STATIC_DIR / "favicon.svg"
+    if svg.is_file():
+        return FileResponse(svg, media_type="image/svg+xml")
+    path = STATIC_DIR / "logo.png"
+    if not path.is_file():
+        raise HTTPException(status_code=404)
+    return FileResponse(path, media_type="image/png")
+
+
+@app.get("/manifest.webmanifest", include_in_schema=False)
+def pwa_manifest():
+    path = STATIC_DIR / "manifest.webmanifest"
+    if not path.is_file():
+        raise HTTPException(status_code=404)
+    return FileResponse(
+        path,
+        media_type="application/manifest+json",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+@app.get("/sw.js", include_in_schema=False)
+def pwa_service_worker():
+    path = STATIC_DIR / "sw.js"
+    if not path.is_file():
+        raise HTTPException(status_code=404)
+    return FileResponse(
+        path,
+        media_type="text/javascript",
+        headers={
+            "Cache-Control": "no-cache",
+            "Service-Worker-Allowed": "/",
+        },
+    )
+
+
+@app.get("/")
+def serve_app():
+    index = Path(__file__).resolve().parent.parent / "static" / "index.html"
+    if index.is_file():
+        return FileResponse(index)
+    raise HTTPException(status_code=404, detail="واجهة المستخدم غير موجودة.")

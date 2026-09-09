@@ -1,0 +1,15 @@
+fastapi==0.115.6
+python-multipart==0.0.20
+uvicorn[standard]==0.32.1
+sqlalchemy==2.0.36
+bcrypt==4.2.1
+PyJWT==2.10.1
+# لا تثبّت الحزمة «jwt» (تتعارض مع PyJWT وتكسر تسجيل الدخول):
+# pip uninstall jwt -y
+tzdata>=2024.1
+psycopg2-binary==2.9.10
+openpyxl==3.1.5
+fpdf2==2.8.2
+# لا تثبّت الحزمة القديمة «fpdf» — تتعارض مع fpdf2
+arabic-reshaper==3.0.0
+python-bidi==0.6.3

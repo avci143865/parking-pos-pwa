@@ -1,0 +1,12 @@
+.env
+parking.db*
+*.db-shm
+*.db-wal
+__pycache__/
+*.py[cod]
+.Python
+venv/
+.venv/
+uploads/
+المركبات.txt
+سطحة و براد.txt
