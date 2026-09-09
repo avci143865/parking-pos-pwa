@@ -1570,6 +1570,8 @@ async function processVehicleScan(raw) {
     const data = await api(`/api/employee/vehicle-scan/${encodeURIComponent(token)}`);
     await showVehicleFlowFromScan(token, data);
   } catch (e) {
+    // إغلاق نافذة المكتب أولًا حتى يظهر التنبيه فوق كل شيء.
+    closeDeskActionModal();
     if (e.status === 403) {
       openMessageModal("مسح غير مسموح", e.message, true);
     } else {

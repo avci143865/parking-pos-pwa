@@ -1421,6 +1421,11 @@ code {
   padding: 1rem;
 }
 
+/* تنبيهات النظام فوق كل النوافذ */
+#message-modal {
+  z-index: 1200;
+}
+
 .modal-backdrop {
   position: absolute;
   inset: 0;
