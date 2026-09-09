@@ -13,8 +13,8 @@
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
   <link rel="alternate icon" href="/favicon.ico" />
   <link rel="apple-touch-icon" href="/static/pwa-icon-192.png" />
-  <script src="/static/theme.js?v=20260909-8"></script>
-  <link rel="stylesheet" href="/static/styles.css?v=20260909-8" />
+  <script src="/static/theme.js?v=20260909-9"></script>
+  <link rel="stylesheet" href="/static/styles.css?v=20260909-9" />
 </head>
 <body>
   <!-- شاشة تسجيل الدخول -->
@@ -82,30 +82,6 @@
 
       <div class="desk-workspace">
         <div class="desk-main-row" id="desk-main-row">
-        <section class="panel panel-elevated desk-vehicle-scan" id="desk-vehicle-scan" aria-labelledby="vehicle-scan-title">
-          <div class="desk-scan-head">
-            <div class="desk-mode-chip desk-mode-chip-scan hidden" id="desk-scan-mode-chip" aria-hidden="true">
-              <span class="desk-mode-icon" id="desk-scan-mode-icon"></span>
-            </div>
-            <div>
-              <h2 class="panel-title desk-scan-title" id="vehicle-scan-title">مسح بطاقة المركبة (QR)</h2>
-              <p class="muted desk-scan-lead" id="vehicle-scan-lead">امسح بالكاميرا أو بقارئ الـ POS (لوحة المفاتيح).</p>
-            </div>
-          </div>
-          <p id="pos-secure-hint" class="hint pos-secure-hint hidden">الكاميرا تحتاج رابط HTTPS على أندرويد. قارئات الـ POS تعمل بدون ذلك.</p>
-          <div class="vehicle-scan-row">
-          <div id="vehicle-qr-reader-host" class="vehicle-qr-reader-host"></div>
-          <div class="vehicle-scan-side">
-            <label class="checkout-label vehicle-qr-camera-label" for="vehicle-qr-camera">اختيار الكاميرا</label>
-            <select id="vehicle-qr-camera" class="checkin-detail-input vehicle-qr-camera-select" aria-label="اختيار كاميرا مسح QR">
-              <option value="">جاري تحميل الكاميرات…</option>
-            </select>
-            <button type="button" class="btn primary btn-block" id="vehicle-qr-start">تشغيل الكاميرا للمسح</button>
-            <button type="button" class="btn btn-ghost btn-block hidden" id="vehicle-qr-stop">إيقاف الكاميرا</button>
-          </div>
-        </div>
-        </section>
-
         <section class="panel panel-elevated panel-checkin desk-focus-panel">
             <div class="desk-panel-hero desk-panel-hero-checkin" aria-hidden="true">
               <span class="desk-panel-hero-icon">↓</span>
@@ -173,6 +149,30 @@
             <p class="checkout-micro muted">الصق الرمز من الإيصال أو اكتبه يدويًا ثم اضغط إتمام الخروج.</p>
             <button type="submit" class="btn btn-block btn-checkout-submit">إتمام الخروج وحساب الرسوم</button>
           </form>
+        </section>
+
+        <section class="panel panel-elevated desk-vehicle-scan" id="desk-vehicle-scan" aria-labelledby="vehicle-scan-title">
+          <div class="desk-scan-head">
+            <div class="desk-mode-chip desk-mode-chip-scan hidden" id="desk-scan-mode-chip" aria-hidden="true">
+              <span class="desk-mode-icon" id="desk-scan-mode-icon"></span>
+            </div>
+            <div>
+              <h2 class="panel-title desk-scan-title" id="vehicle-scan-title">مسح بطاقة المركبة (QR)</h2>
+              <p class="muted desk-scan-lead" id="vehicle-scan-lead">امسح بالكاميرا أو بقارئ الـ POS (لوحة المفاتيح).</p>
+            </div>
+          </div>
+          <p id="pos-secure-hint" class="hint pos-secure-hint hidden">الكاميرا تحتاج رابط HTTPS على أندرويد. قارئات الـ POS تعمل بدون ذلك.</p>
+          <div class="vehicle-scan-row">
+          <div id="vehicle-qr-reader-host" class="vehicle-qr-reader-host"></div>
+          <div class="vehicle-scan-side">
+            <label class="checkout-label vehicle-qr-camera-label" for="vehicle-qr-camera">اختيار الكاميرا</label>
+            <select id="vehicle-qr-camera" class="checkin-detail-input vehicle-qr-camera-select" aria-label="اختيار كاميرا مسح QR">
+              <option value="">جاري تحميل الكاميرات…</option>
+            </select>
+            <button type="button" class="btn primary btn-block" id="vehicle-qr-start">تشغيل الكاميرا للمسح</button>
+            <button type="button" class="btn btn-ghost btn-block hidden" id="vehicle-qr-stop">إيقاف الكاميرا</button>
+          </div>
+        </div>
         </section>
         </div>
       </div>
@@ -549,11 +549,11 @@
     </div>
   </div>
 
-  <script src="/static/vendor/html5-qrcode.min.js?v=20260909-8"></script>
-  <script src="/static/vendor/qrcode.min.js?v=20260909-8"></script>
-  <script src="/static/vendor/html2canvas.min.js?v=20260909-8"></script>
-  <script src="/static/vendor/jszip.min.js?v=20260909-8"></script>
-  <script src="/static/pos-pwa.js?v=20260909-8"></script>
-  <script src="/static/app.js?v=20260909-8"></script>
+  <script src="/static/vendor/html5-qrcode.min.js?v=20260909-9"></script>
+  <script src="/static/vendor/qrcode.min.js?v=20260909-9"></script>
+  <script src="/static/vendor/html2canvas.min.js?v=20260909-9"></script>
+  <script src="/static/vendor/jszip.min.js?v=20260909-9"></script>
+  <script src="/static/pos-pwa.js?v=20260909-9"></script>
+  <script src="/static/app.js?v=20260909-9"></script>
 </body>
 </html>
