@@ -9,7 +9,7 @@
   };
 
   const BLE_CHUNK = 180;
-  const ASSET = "20260910-5";
+  const ASSET = "20260910-6";
 
   const state = {
     deferredInstall: null,
