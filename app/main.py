@@ -1783,6 +1783,34 @@ def pwa_service_worker():
     )
 
 
+@app.get("/.well-known/assetlinks.json", include_in_schema=False)
+def android_assetlinks():
+    """Digital Asset Links للتحقق من تطبيق TWA/APK.
+
+    اضبط المتغيرين في Railway عند تغليف التطبيق كـ APK:
+      ANDROID_PACKAGE_NAME=com.example.app
+      ASSETLINKS_SHA256_FINGERPRINTS=AA:BB:CC:... (افصل عدة بصمات بفاصلة)
+    """
+    package = (os.environ.get("ANDROID_PACKAGE_NAME") or "").strip()
+    raw = (os.environ.get("ASSETLINKS_SHA256_FINGERPRINTS") or "").strip()
+    fingerprints = [f.strip() for f in raw.replace(" ", ",").split(",") if f.strip()]
+    if not package or not fingerprints:
+        raise HTTPException(status_code=404)
+    return JSONResponse(
+        [
+            {
+                "relation": ["delegate_permission/common.handle_all_urls"],
+                "target": {
+                    "namespace": "android_app",
+                    "package_name": package,
+                    "sha256_cert_fingerprints": fingerprints,
+                },
+            }
+        ],
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
 @app.get("/")
 def serve_app():
     index = Path(__file__).resolve().parent.parent / "static" / "index.html"
