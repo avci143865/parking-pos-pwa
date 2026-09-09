@@ -1771,7 +1771,11 @@ function goToVehicleCardFromReceipt() {
   openVehicleCardModal(profile);
 }
 
+let thermalPrintCleanupTimer = 0;
+
 function clearThermalPrintMode() {
+  window.clearTimeout(thermalPrintCleanupTimer);
+  thermalPrintCleanupTimer = 0;
   document.body.classList.remove("print-receipt-slip", "print-checkout-slip");
 }
 
@@ -1781,10 +1785,11 @@ function runBrowserPrint(mode) {
   document.body.classList.add(
     mode === "checkout" ? "print-checkout-slip" : "print-receipt-slip"
   );
-  const cleanup = () => clearThermalPrintMode();
-  window.addEventListener("afterprint", cleanup, { once: true });
-  setTimeout(cleanup, 4000);
-  window.print();
+  // أمان فقط: إزالة متأخرة جدًا — الإزالة الأساسية عند إغلاق النافذة.
+  // لا نعتمد على afterprint لأنه يشتعل مبكرًا على أندرويد قبل لقطة المعاينة.
+  thermalPrintCleanupTimer = window.setTimeout(clearThermalPrintMode, 60000);
+  // إطاران لضمان تطبيق أنماط الطباعة قبل لقطة المعاينة.
+  requestAnimationFrame(() => requestAnimationFrame(() => window.print()));
 }
 
 function printThermalSlip(mode) {
@@ -1819,6 +1824,7 @@ function closeReceiptModal() {
   modal.setAttribute("hidden", "");
   $("receipt-modal-body").innerHTML = "";
   receiptModalProfileRef = null;
+  clearThermalPrintMode();
   syncReceiptCardButton();
   if (
     checkoutModalIsHidden() &&
@@ -1895,6 +1901,7 @@ function closeCheckoutResultModal() {
   modal.classList.add("hidden");
   modal.setAttribute("hidden", "");
   $("checkout-result-modal-body").innerHTML = "";
+  clearThermalPrintMode();
   if (
     modalIsHidden() &&
     messageModalIsHidden() &&
