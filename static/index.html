@@ -13,8 +13,8 @@
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
   <link rel="alternate icon" href="/favicon.ico" />
   <link rel="apple-touch-icon" href="/static/pwa-icon-192.png" />
-  <script src="/static/theme.js?v=20260910-4"></script>
-  <link rel="stylesheet" href="/static/styles.css?v=20260910-4" />
+  <script src="/static/theme.js?v=20260910-5"></script>
+  <link rel="stylesheet" href="/static/styles.css?v=20260910-5" />
 </head>
 <body>
   <!-- شاشة تسجيل الدخول -->
@@ -235,49 +235,12 @@
 
       <section class="panel panel-elevated">
         <div class="profiles-toolbar">
-          <div class="profiles-search-row">
-            <label class="profiles-search-label" for="profiles-search">بحث سريع</label>
-            <input type="search" id="profiles-search" class="checkin-detail-input profiles-search-input" placeholder="لوحة، سائق، شركة، نوع..." autocomplete="off" />
-          </div>
-          <div class="profiles-filters-row">
-            <label class="profiles-filter-field">
-              <span class="profiles-filter-label">نوع المركبة</span>
-              <select id="profiles-filter-type" class="checkin-detail-input profiles-filter-select">
-                <option value="">الكل</option>
-              </select>
-            </label>
-            <label class="profiles-filter-field profiles-filter-field-wide">
-              <span class="profiles-filter-label">الشركة التضامنية</span>
-              <select id="profiles-filter-company" class="checkin-detail-input profiles-filter-select">
-                <option value="">الكل</option>
-              </select>
-            </label>
-            <label class="profiles-filter-field">
-              <span class="profiles-filter-label">صورة</span>
-              <select id="profiles-filter-photo" class="checkin-detail-input profiles-filter-select">
-                <option value="">الكل</option>
-                <option value="yes">مع صورة</option>
-                <option value="no">بدون صورة</option>
-              </select>
-            </label>
-            <button type="button" class="btn btn-sm-pad" id="profiles-clear-filters">مسح الفلاتر</button>
-            <div class="profiles-bulk-card-export" aria-label="تنزيل بطاقات المركبات حسب النوع">
-              <label class="profiles-filter-field">
-                <span class="profiles-filter-label">نوع البطاقات</span>
-                <select id="profiles-bulk-card-type" class="checkin-detail-input profiles-filter-select">
-                  <option value="">اختر النوع</option>
-                </select>
-              </label>
-              <label class="profiles-filter-field profiles-bulk-count-field">
-                <span class="profiles-filter-label">عدد البطاقات</span>
-                <input id="profiles-bulk-card-count" class="checkin-detail-input" type="number" min="1" max="5000" value="500" />
-              </label>
-              <button type="button" class="btn btn-sm-pad primary" id="profiles-bulk-card-download">تنزيل ZIP</button>
-              <span class="muted profiles-bulk-card-status" id="profiles-bulk-card-status" aria-live="polite"></span>
-            </div>
-          </div>
+          <button type="button" class="btn primary" id="profiles-open-filter">
+            <span aria-hidden="true">🔍</span> بحث وفلترة
+            <span class="filter-count hidden" id="profiles-filter-count" aria-hidden="true"></span>
+          </button>
+          <p class="muted profiles-results-summary" id="profiles-results-summary" aria-live="polite"></p>
         </div>
-        <p class="muted profiles-results-summary" id="profiles-results-summary" aria-live="polite"></p>
         <div class="profiles-pagination" id="profiles-pagination">
           <button type="button" class="btn btn-sm-pad" id="profiles-prev" disabled>السابق</button>
           <span class="profiles-page-info" id="profiles-page-info">—</span>
@@ -306,6 +269,63 @@
           </table>
         </div>
       </section>
+    </div>
+
+    <!-- نافذة بحث وفلترة المركبات -->
+    <div id="profiles-filter-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="profiles-filter-modal-title">
+      <div class="modal-backdrop" id="profiles-filter-modal-backdrop" tabindex="-1"></div>
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h2 id="profiles-filter-modal-title">بحث وفلترة المركبات</h2>
+          <button type="button" class="btn modal-close" id="profiles-filter-modal-close" aria-label="إغلاق">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="profiles-search-row">
+            <label class="profiles-search-label" for="profiles-search">بحث سريع</label>
+            <input type="search" id="profiles-search" class="checkin-detail-input profiles-search-input" placeholder="لوحة، سائق، شركة، نوع..." autocomplete="off" />
+          </div>
+          <div class="profiles-filters-row">
+            <label class="profiles-filter-field">
+              <span class="profiles-filter-label">نوع المركبة</span>
+              <select id="profiles-filter-type" class="checkin-detail-input profiles-filter-select">
+                <option value="">الكل</option>
+              </select>
+            </label>
+            <label class="profiles-filter-field profiles-filter-field-wide">
+              <span class="profiles-filter-label">الشركة التضامنية</span>
+              <select id="profiles-filter-company" class="checkin-detail-input profiles-filter-select">
+                <option value="">الكل</option>
+              </select>
+            </label>
+            <label class="profiles-filter-field">
+              <span class="profiles-filter-label">صورة</span>
+              <select id="profiles-filter-photo" class="checkin-detail-input profiles-filter-select">
+                <option value="">الكل</option>
+                <option value="yes">مع صورة</option>
+                <option value="no">بدون صورة</option>
+              </select>
+            </label>
+            <div class="profiles-bulk-card-export" aria-label="تنزيل بطاقات المركبات حسب النوع">
+              <label class="profiles-filter-field">
+                <span class="profiles-filter-label">نوع البطاقات</span>
+                <select id="profiles-bulk-card-type" class="checkin-detail-input profiles-filter-select">
+                  <option value="">اختر النوع</option>
+                </select>
+              </label>
+              <label class="profiles-filter-field profiles-bulk-count-field">
+                <span class="profiles-filter-label">عدد البطاقات</span>
+                <input id="profiles-bulk-card-count" class="checkin-detail-input" type="number" min="1" max="5000" value="500" />
+              </label>
+              <button type="button" class="btn btn-sm-pad primary" id="profiles-bulk-card-download">تنزيل ZIP</button>
+              <span class="muted profiles-bulk-card-status" id="profiles-bulk-card-status" aria-live="polite"></span>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer no-print">
+          <button type="button" class="btn btn-sm-pad" id="profiles-clear-filters">مسح الفلاتر</button>
+          <button type="button" class="btn primary btn-sm-pad" id="profiles-filter-apply">عرض النتائج</button>
+        </div>
+      </div>
     </div>
 
     <div class="layout hidden" id="view-fifo">      <header class="header header-desk fifo-page-header">
@@ -577,11 +597,11 @@
     </div>
   </div>
 
-  <script src="/static/vendor/html5-qrcode.min.js?v=20260910-4"></script>
-  <script src="/static/vendor/qrcode.min.js?v=20260910-4"></script>
-  <script src="/static/vendor/html2canvas.min.js?v=20260910-4"></script>
-  <script src="/static/vendor/jszip.min.js?v=20260910-4"></script>
-  <script src="/static/pos-pwa.js?v=20260910-4"></script>
-  <script src="/static/app.js?v=20260910-4"></script>
+  <script src="/static/vendor/html5-qrcode.min.js?v=20260910-5"></script>
+  <script src="/static/vendor/qrcode.min.js?v=20260910-5"></script>
+  <script src="/static/vendor/html2canvas.min.js?v=20260910-5"></script>
+  <script src="/static/vendor/jszip.min.js?v=20260910-5"></script>
+  <script src="/static/pos-pwa.js?v=20260910-5"></script>
+  <script src="/static/app.js?v=20260910-5"></script>
 </body>
 </html>

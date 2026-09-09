@@ -1972,6 +1972,7 @@ function wireReceiptModal() {
       return;
     }
     if (!deskModalIsHidden()) closeDeskActionModal();
+    if (!profilesFilterModalIsHidden()) closeProfilesFilterModal();
   });
 }
 
@@ -2022,7 +2023,8 @@ function closeDeskActionModal({ stopScan = true } = {}) {
     modalIsHidden() &&
     messageModalIsHidden() &&
     vehicleFlowModalIsHidden() &&
-    vehicleCardModalIsHidden()
+    vehicleCardModalIsHidden() &&
+    profilesFilterModalIsHidden()
   ) {
     document.body.classList.remove("modal-open");
   }
@@ -2588,6 +2590,7 @@ async function refreshVehicleProfiles() {
 function renderVehicleProfilesTable() {
   const tbody = $("profiles-body");
   if (!tbody) return;
+  updateProfilesFilterButton();
   updateProfilesTotalStat();
   updateProfilesPaginationUi();
   if (!vehicleProfileListCache.length) {
@@ -2655,6 +2658,61 @@ function renderVehicleProfilesTable() {
     }
     tbody.appendChild(tr);
   }
+}
+
+function updateProfilesFilterButton() {
+  const badge = $("profiles-filter-count");
+  if (!badge) return;
+  let n = 0;
+  if ((profilesSearchQuery || "").trim()) n++;
+  if (profilesFilters.vehicle_type) n++;
+  if (profilesFilters.partnership_company) n++;
+  if (profilesFilters.has_photo) n++;
+  badge.textContent = n > 0 ? String(n) : "";
+  badge.classList.toggle("hidden", n === 0);
+}
+
+function profilesFilterModalIsHidden() {
+  const m = $("profiles-filter-modal");
+  return !m || m.classList.contains("hidden") || m.hasAttribute("hidden");
+}
+
+function openProfilesFilterModal() {
+  const modal = $("profiles-filter-modal");
+  if (!modal) return;
+  modal.classList.remove("hidden");
+  modal.removeAttribute("hidden");
+  document.body.classList.add("modal-open");
+  const search = $("profiles-search");
+  if (search) search.focus({ preventScroll: true });
+}
+
+function closeProfilesFilterModal() {
+  const modal = $("profiles-filter-modal");
+  if (!modal || modal.classList.contains("hidden")) return;
+  modal.classList.add("hidden");
+  modal.setAttribute("hidden", "");
+  if (
+    checkoutModalIsHidden() &&
+    modalIsHidden() &&
+    messageModalIsHidden() &&
+    vehicleFlowModalIsHidden() &&
+    vehicleCardModalIsHidden() &&
+    deskModalIsHidden()
+  ) {
+    document.body.classList.remove("modal-open");
+  }
+  $("profiles-open-filter")?.focus({ preventScroll: true });
+}
+
+function wireProfilesFilterModal() {
+  $("profiles-open-filter")?.addEventListener("click", openProfilesFilterModal);
+  $("profiles-filter-modal-close")?.addEventListener("click", closeProfilesFilterModal);
+  $("profiles-filter-modal-backdrop")?.addEventListener("click", closeProfilesFilterModal);
+  $("profiles-filter-apply")?.addEventListener("click", closeProfilesFilterModal);
+  $("profiles-search")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") closeProfilesFilterModal();
+  });
 }
 
 async function refreshTickets() {
@@ -2998,6 +3056,7 @@ async function boot() {
 wireCheckoutResultModal();
 wireReceiptModal();
 wireDeskActionModal();
+wireProfilesFilterModal();
 wireMessageModal();
 wireVehicleFlowModal();
 wireVehicleScanDesk();

@@ -3632,6 +3632,87 @@ textarea:hover {
   width: 100%;
 }
 
+/* —— صفحة إدارة المركبات: شريط عصري + نافذة بحث —— */
+.profiles-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.9rem;
+}
+
+#profiles-open-filter {
+  min-height: 48px;
+  font-size: 1rem;
+  border-radius: 12px;
+}
+
+.filter-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5em;
+  height: 1.5em;
+  padding: 0 0.35em;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.25);
+  font-size: 0.8em;
+  font-weight: 800;
+}
+
+.profiles-results-summary {
+  margin: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+}
+
+.profiles-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  margin: 0.9rem 0;
+}
+
+.profiles-table-wrap tbody td:nth-child(3) {
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.profiles-table-wrap tbody td:nth-child(8),
+.profiles-table-wrap tbody td:nth-child(10) {
+  font-weight: 600;
+}
+
+#profiles-filter-modal .profiles-search-row {
+  margin-bottom: 0.9rem;
+}
+
+#profiles-filter-modal .profiles-search-label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-weight: 700;
+}
+
+#profiles-filter-modal .profiles-search-input {
+  width: 100%;
+}
+
+#profiles-filter-modal .profiles-filters-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+#profiles-filter-modal .profiles-bulk-card-export {
+  border-top: 1px dashed var(--border);
+  padding-top: 0.9rem;
+  margin-top: 0.4rem;
+}
+
 /* —— عمليات المكتب كنوافذ: أزرار كبيرة + شاشة على المقاس —— */
 body {
   overflow-x: clip;
