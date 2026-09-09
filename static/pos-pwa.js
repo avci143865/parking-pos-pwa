@@ -9,7 +9,7 @@
   };
 
   const BLE_CHUNK = 180;
-  const ASSET = "20260909-5";
+  const ASSET = "20260909-6";
 
   const state = {
     deferredInstall: null,
@@ -62,8 +62,9 @@
     const run = () => {
       navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
     };
-    if (document.readyState === "complete") run();
-    else window.addEventListener("load", run);
+    // تسجيل مبكر (لا انتظار تحميل الصفحة كاملة) ليتعرف عليه PWABuilder والمتصفح فورًا.
+    if (document.readyState === "complete" || document.readyState === "interactive") run();
+    else document.addEventListener("DOMContentLoaded", run);
   }
 
   function installButtons() {
