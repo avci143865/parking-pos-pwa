@@ -61,6 +61,7 @@ function setToken(token) {
 
 function clearAuth() {
   localStorage.removeItem(TOKEN_KEY);
+  document.body.classList.remove("role-employee");
   currentRole = null;
   currentUsername = null;
   canCheckIn = false;
@@ -87,6 +88,7 @@ function applyRoleUI(me) {
   canCheckIn = perms.canCheckIn;
   canCheckOut = perms.canCheckOut;
   const isAdmin = me.role === "admin";
+  document.body.classList.toggle("role-employee", !isAdmin);
   $("nav-settings").classList.toggle("hidden", !isAdmin);
   $("nav-stats").classList.toggle("hidden", !isAdmin);
   $("fifo-admin-export")?.classList.toggle("hidden", !isAdmin);
@@ -1112,6 +1114,7 @@ async function refreshFifoDashboard() {
     updateFifoHeroStats(data);
     renderFifoQueues(data);
     renderFifoAdminExport(data);
+    $("fifo-export-all-image")?.classList.toggle("hidden", currentRole !== "admin");
   } finally {
     host.classList.remove("fifo-loading");
   }
@@ -1487,12 +1490,16 @@ function renderFifoQueues(data) {
 }
 
 function renderFifoTypeCard(q) {
+  const isAdmin = currentRole === "admin";
   const allowed =
     q.current_allowed_queue_number != null ? String(q.current_allowed_queue_number) : "—";
   const items = q.items || [];
   const listHtml = items.length
     ? items.map((it) => renderFifoQueueItem(it)).join("")
     : '<p class="muted fifo-no-results">لا نتائج مطابقة للبحث</p>';
+  const imgBtn = isAdmin
+    ? '<button type="button" class="btn btn-sm-pad btn-ghost fifo-export-type" data-truck-type="' + escapeHtml(q.truck_type) + '" title="تنزيل صورة">صورة</button>'
+    : "";
   return `
     <article class="fifo-card">
       <header class="fifo-card-header">
@@ -1500,7 +1507,7 @@ function renderFifoTypeCard(q) {
           <span class="fifo-card-badge">${escapeHtml(q.truck_type)}</span>
           <h3 class="fifo-card-title">طابور ${escapeHtml(q.truck_type)}</h3>
         </div>
-        <button type="button" class="btn btn-sm-pad btn-ghost fifo-export-type" data-truck-type="${escapeHtml(q.truck_type)}" title="تنزيل صورة">صورة</button>
+        ${imgBtn}
       </header>
       <div class="fifo-card-metrics">
         <div class="fifo-metric">
@@ -2571,19 +2578,15 @@ async function refreshTickets() {
   tbody.innerHTML = "";
   if (!ticketLogCache.length) {
     tbody.innerHTML =
-      '<tr><td colspan="7" class="muted">لا توجد تذاكر بعد.</td></tr>';
+      '<tr><td colspan="4" class="muted">لا توجد تذاكر بعد.</td></tr>';
     return;
   }
   for (const r of ticketLogCache) {
     const tr = document.createElement("tr");
-    const entered = formatDamascusDateTime(r.entered_at);
     const inside = r.exited_at == null;
     const statusHtml = inside
       ? '<span class="badge badge-in">داخل الموقف</span>'
       : '<span class="badge badge-out">تم الخروج</span>';
-    const exitedDisplay = r.exited_at
-      ? formatDamascusDateTime(r.exited_at)
-      : "—";
     const codeHtml = escapeHtml(r.receipt_code);
     tr.innerHTML = `
       <td>${escapeHtml(r.license_plate)}</td>
@@ -2593,10 +2596,7 @@ async function refreshTickets() {
           <button type="button" class="btn btn-sm copy-receipt-code" data-code="${codeHtml}">نسخ</button>
         </div>
       </td>
-      <td>${entered}</td>
       <td>${statusHtml}</td>
-      <td>${exitedDisplay}</td>
-      <td>${r.slot_number}</td>
       <td><button type="button" class="btn btn-sm preview-ticket" data-receipt="${codeHtml}">معاينة</button></td>`;
     tbody.appendChild(tr);
   }

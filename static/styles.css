@@ -3549,6 +3549,71 @@ textarea:hover {
   background: rgba(34, 211, 238, 0.35);
 }
 
+/* —— مكتب المسح المدمج: دخول/خروج بالأعلى والكاميرا تحتهما بشريط صغير —— */
+.desk-vehicle-scan .desk-scan-lead {
+  display: none;
+}
+
+.desk-vehicle-scan .desk-scan-title {
+  font-size: 1rem;
+}
+
+.desk-vehicle-scan .desk-scan-head {
+  margin-bottom: 0.6rem;
+}
+
+.vehicle-qr-reader-host {
+  min-height: 140px;
+}
+
+.vehicle-scan-side {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 0.65rem;
+  align-items: end;
+}
+
+.vehicle-qr-camera-label {
+  grid-column: 1 / -1;
+  margin-bottom: -0.25rem;
+}
+
+@media (max-width: 560px) {
+  .vehicle-scan-side {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* —— توازن أعمدة المكتب بعد التقديم: دخول | خروج | مسح —— */
+.desk-view--full .desk-main-row {
+  grid-template-columns: minmax(280px, 1.05fr) minmax(280px, 1.05fr) minmax(240px, 0.9fr);
+}
+
+.desk-view--checkin .desk-main-row,
+.desk-view--checkout .desk-main-row {
+  grid-template-columns: minmax(300px, 1.1fr) minmax(240px, 0.9fr);
+}
+
+/* —— تبسيط الموظف: أعمدة المركبات الأساسية فقط + بحث —— */
+.role-employee #view-profiles :is(th, td):is(:nth-child(1), :nth-child(2), :nth-child(4), :nth-child(6), :nth-child(7), :nth-child(9), :nth-child(11), :nth-child(12)) {
+  display: none;
+}
+
+.role-employee .profiles-filters-row {
+  display: none;
+}
+
+/* —— بطاقات الطوابير: رفعة عصرية —— */
+.fifo-card {
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.fifo-card:hover {
+  transform: translateY(-2px);
+}
+
 /* —— صفحات المدير بنفس حداثة الدخول/الخروج —— */
 
 /* بطاقات الإحصائيات: شريط علوي ملوّن حسب النوع */
