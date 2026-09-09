@@ -230,8 +230,11 @@ function updateDeskLayout() {
 
   document.querySelector(".panel-checkin")?.classList.toggle("hidden", !canCheckIn);
   document.querySelector(".panel-checkout")?.classList.toggle("hidden", !canCheckOut);
+  $("desk-open-checkin")?.classList.toggle("hidden", !canCheckIn);
+  $("desk-open-checkout")?.classList.toggle("hidden", !canCheckOut);
 
   const showScan = canCheckIn || canCheckOut;
+  $("desk-open-scan")?.classList.toggle("hidden", !showScan);
   const scanEl = $("desk-vehicle-scan");
   scanEl?.classList.toggle("hidden", !showScan);
   scanEl?.classList.toggle("desk-scan-checkin", canCheckIn && !canCheckOut);
@@ -586,6 +589,7 @@ function closeVehicleFlowModal() {
 }
 
 function openVehicleFlowModal({ title, bodyHtml, primaryLabel, showPrimary, onPrimary }) {
+  closeDeskActionModal();
   if (!checkoutModalIsHidden()) closeCheckoutResultModal();
   if (!modalIsHidden()) closeReceiptModal();
   if (!messageModalIsHidden()) closeMessageModal();
@@ -1812,6 +1816,7 @@ function printThermalSlip(mode) {
 }
 
 function openReceiptModal(session) {
+  closeDeskActionModal();
   if (!checkoutModalIsHidden()) closeCheckoutResultModal();
   if (!messageModalIsHidden()) closeMessageModal();
   if (!vehicleFlowModalIsHidden()) closeVehicleFlowModal();
@@ -1895,6 +1900,7 @@ function wireMessageModal() {
 }
 
 function openCheckoutResultModal(data) {
+  closeDeskActionModal();
   if (!modalIsHidden()) closeReceiptModal();
   if (!messageModalIsHidden()) closeMessageModal();
   if (!vehicleFlowModalIsHidden()) closeVehicleFlowModal();
@@ -1961,8 +1967,87 @@ function wireReceiptModal() {
       closeCheckoutResultModal();
       return;
     }
-    if (!modalIsHidden()) closeReceiptModal();
+    if (!modalIsHidden()) {
+      closeReceiptModal();
+      return;
+    }
+    if (!deskModalIsHidden()) closeDeskActionModal();
   });
+}
+
+function deskModalIsHidden() {
+  const m = $("desk-action-modal");
+  return !m || m.classList.contains("hidden") || m.hasAttribute("hidden");
+}
+
+const deskPanelHomes = new Map();
+let deskModalReturnFocus = null;
+
+function openDeskActionModal(panelId, title) {
+  const panel = document.getElementById(panelId);
+  const modal = $("desk-action-modal");
+  const body = $("desk-action-modal-body");
+  if (!panel || !modal || !body) return;
+  if (!modal.classList.contains("hidden")) closeDeskActionModal({ stopScan: false });
+  if (!deskPanelHomes.has(panelId)) {
+    deskPanelHomes.set(panelId, { parent: panel.parentElement, next: panel.nextElementSibling });
+  }
+  body.innerHTML = "";
+  body.appendChild(panel);
+  panel.classList.remove("hidden");
+  panel.removeAttribute("hidden");
+  $("desk-action-modal-title").textContent = title;
+  modal.classList.remove("hidden");
+  modal.removeAttribute("hidden");
+  document.body.classList.add("modal-open");
+  deskModalReturnFocus = document.activeElement;
+  const first = panel.querySelector("input, select, textarea, button");
+  if (first) first.focus({ preventScroll: true });
+}
+
+function closeDeskActionModal({ stopScan = true } = {}) {
+  const modal = $("desk-action-modal");
+  if (!modal || modal.classList.contains("hidden")) return;
+  const body = $("desk-action-modal-body");
+  const panel = body ? body.firstElementChild : null;
+  if (panel && panel.id && deskPanelHomes.has(panel.id)) {
+    const home = deskPanelHomes.get(panel.id);
+    if (home.parent) home.parent.insertBefore(panel, home.next);
+  }
+  if (body) body.innerHTML = "";
+  modal.classList.add("hidden");
+  modal.setAttribute("hidden", "");
+  if (
+    checkoutModalIsHidden() &&
+    modalIsHidden() &&
+    messageModalIsHidden() &&
+    vehicleFlowModalIsHidden() &&
+    vehicleCardModalIsHidden()
+  ) {
+    document.body.classList.remove("modal-open");
+  }
+  if (stopScan && panel && panel.id === "desk-vehicle-scan") {
+    window.ParkingPos?.setWantResume(false);
+    stopVehicleQrScanner().catch(() => {});
+  }
+  if (deskModalReturnFocus && typeof deskModalReturnFocus.focus === "function") {
+    deskModalReturnFocus.focus({ preventScroll: true });
+  }
+  deskModalReturnFocus = null;
+}
+
+function wireDeskActionModal() {
+  $("desk-open-checkin")?.addEventListener("click", () =>
+    openDeskActionModal("desk-panel-checkin", "دخول مركبة")
+  );
+  $("desk-open-checkout")?.addEventListener("click", () =>
+    openDeskActionModal("desk-panel-checkout", "خروج مركبة")
+  );
+  $("desk-open-scan")?.addEventListener("click", () =>
+    openDeskActionModal("desk-vehicle-scan", "مسح بطاقة المركبة")
+  );
+  $("desk-action-modal-close")?.addEventListener("click", () => closeDeskActionModal());
+  $("desk-action-modal-backdrop")?.addEventListener("click", () => closeDeskActionModal());
 }
 
 function modalIsHidden() {
@@ -2912,6 +2997,7 @@ async function boot() {
 
 wireCheckoutResultModal();
 wireReceiptModal();
+wireDeskActionModal();
 wireMessageModal();
 wireVehicleFlowModal();
 wireVehicleScanDesk();

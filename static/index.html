@@ -13,8 +13,8 @@
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
   <link rel="alternate icon" href="/favicon.ico" />
   <link rel="apple-touch-icon" href="/static/pwa-icon-192.png" />
-  <script src="/static/theme.js?v=20260910-2"></script>
-  <link rel="stylesheet" href="/static/styles.css?v=20260910-2" />
+  <script src="/static/theme.js?v=20260910-3"></script>
+  <link rel="stylesheet" href="/static/styles.css?v=20260910-3" />
 </head>
 <body>
   <!-- شاشة تسجيل الدخول -->
@@ -81,8 +81,25 @@
       </header>
 
       <div class="desk-workspace">
-        <div class="desk-main-row" id="desk-main-row">
-        <section class="panel panel-elevated panel-checkin desk-focus-panel">
+        <div class="desk-actions" id="desk-actions">
+          <button type="button" class="btn desk-action-btn desk-action-checkin" id="desk-open-checkin">
+            <span class="desk-action-icon" aria-hidden="true">↓</span>
+            <span class="desk-action-text">إدخال مركبة</span>
+            <span class="desk-action-sub">تسجيل دخول وتخصيص مكان</span>
+          </button>
+          <button type="button" class="btn desk-action-btn desk-action-checkout" id="desk-open-checkout">
+            <span class="desk-action-icon" aria-hidden="true">↑</span>
+            <span class="desk-action-text">إخراج مركبة</span>
+            <span class="desk-action-sub">إتمام الخروج وحساب الرسوم</span>
+          </button>
+          <button type="button" class="btn desk-action-btn desk-action-scan" id="desk-open-scan">
+            <span class="desk-action-icon" aria-hidden="true">📷</span>
+            <span class="desk-action-text">مسح بطاقة المركبة</span>
+            <span class="desk-action-sub">QR بالكاميرا أو قارئ POS</span>
+          </button>
+        </div>
+        <div class="desk-main-row hidden" id="desk-main-row" aria-hidden="true">
+        <section class="panel panel-elevated panel-checkin desk-focus-panel" id="desk-panel-checkin">
             <div class="desk-panel-hero desk-panel-hero-checkin" aria-hidden="true">
               <span class="desk-panel-hero-icon">↓</span>
               <span class="desk-panel-hero-label">إدخال مركبة</span>
@@ -127,7 +144,7 @@
           </form>
         </section>
 
-        <section class="panel panel-elevated panel-checkout desk-focus-panel">
+        <section class="panel panel-elevated panel-checkout desk-focus-panel" id="desk-panel-checkout">
           <div class="desk-panel-hero desk-panel-hero-checkout" aria-hidden="true">
             <span class="desk-panel-hero-icon">↑</span>
             <span class="desk-panel-hero-label">إخراج مركبة</span>
@@ -512,6 +529,18 @@
       </div>
     </div>
 
+    <!-- نافذة عمليات المكتب: دخول / خروج / مسح -->
+    <div id="desk-action-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="desk-action-modal-title">
+      <div class="modal-backdrop" id="desk-action-modal-backdrop" tabindex="-1"></div>
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h2 id="desk-action-modal-title">…</h2>
+          <button type="button" class="btn modal-close" id="desk-action-modal-close" aria-label="إغلاق">×</button>
+        </div>
+        <div class="modal-body" id="desk-action-modal-body"></div>
+      </div>
+    </div>
+
     <!-- بطاقة المركبة (عرض وتنزيل) -->
     <div id="vehicle-card-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="vehicle-card-modal-title">
       <div class="modal-backdrop" id="vehicle-card-modal-backdrop" tabindex="-1"></div>
@@ -548,11 +577,11 @@
     </div>
   </div>
 
-  <script src="/static/vendor/html5-qrcode.min.js?v=20260910-2"></script>
-  <script src="/static/vendor/qrcode.min.js?v=20260910-2"></script>
-  <script src="/static/vendor/html2canvas.min.js?v=20260910-2"></script>
-  <script src="/static/vendor/jszip.min.js?v=20260910-2"></script>
-  <script src="/static/pos-pwa.js?v=20260910-2"></script>
-  <script src="/static/app.js?v=20260910-2"></script>
+  <script src="/static/vendor/html5-qrcode.min.js?v=20260910-3"></script>
+  <script src="/static/vendor/qrcode.min.js?v=20260910-3"></script>
+  <script src="/static/vendor/html2canvas.min.js?v=20260910-3"></script>
+  <script src="/static/vendor/jszip.min.js?v=20260910-3"></script>
+  <script src="/static/pos-pwa.js?v=20260910-3"></script>
+  <script src="/static/app.js?v=20260910-3"></script>
 </body>
 </html>

@@ -3614,6 +3614,151 @@ textarea:hover {
   transform: translateY(-2px);
 }
 
+/* —— عمليات المكتب كنوافذ: أزرار كبيرة + شاشة على المقاس —— */
+body {
+  overflow-x: clip;
+}
+
+#desk-panel-store,
+#desk-main-row.hidden {
+  display: none !important;
+}
+
+#view-desk {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100dvh - 70px);
+}
+
+.desk-workspace {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.desk-actions {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  align-content: stretch;
+}
+
+.desk-action-btn {
+  height: 100%;
+  min-height: 110px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 18px;
+  font-size: 1.1rem;
+  padding: 1.25rem 1rem;
+}
+
+.desk-action-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.desk-action-text {
+  font-weight: 700;
+}
+
+.desk-action-sub {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.desk-action-checkin {
+  border-color: rgba(52, 211, 153, 0.4);
+  box-shadow: 0 8px 28px rgba(52, 211, 153, 0.12);
+}
+
+.desk-action-checkin .desk-action-icon {
+  background: rgba(52, 211, 153, 0.15);
+  color: var(--success);
+}
+
+.desk-action-checkout {
+  border-color: rgba(251, 191, 36, 0.4);
+  box-shadow: 0 8px 28px rgba(251, 191, 36, 0.1);
+}
+
+.desk-action-checkout .desk-action-icon {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+}
+
+.desk-action-scan {
+  border-color: rgba(34, 211, 238, 0.4);
+  box-shadow: 0 8px 28px rgba(34, 211, 238, 0.12);
+}
+
+.desk-action-scan .desk-action-icon {
+  background: rgba(34, 211, 238, 0.15);
+  color: var(--accent);
+}
+
+/* اللوحة داخل النافذة: مدمجة بدون إطار مضاعف */
+#desk-action-modal-body > .panel {
+  margin: 0;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  padding: 0;
+}
+
+#desk-action-modal-body #desk-panel-checkin {
+  background:
+    linear-gradient(165deg, rgba(52, 211, 153, 0.08) 0%, rgba(255, 255, 255, 0.03) 42%, transparent 100%),
+    var(--bg-elevated);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+#desk-action-modal-body #desk-panel-checkout {
+  background:
+    linear-gradient(165deg, rgba(167, 243, 208, 0.08) 0%, rgba(255, 255, 255, 0.03) 42%, transparent 100%),
+    var(--bg-elevated);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+#desk-action-modal-body .checkin-plate-input:focus,
+#desk-action-modal-body .checkin-detail-input:focus,
+#desk-action-modal-body .checkin-detail-textarea:focus {
+  border-color: rgba(52, 211, 153, 0.55);
+  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.18);
+}
+
+#desk-action-modal-body .checkout-receipt-input:focus {
+  border-color: rgba(167, 243, 208, 0.55);
+  box-shadow: 0 0 0 3px rgba(167, 243, 208, 0.16);
+}
+
+@media (max-width: 820px) {
+  .desk-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .desk-action-btn {
+    min-height: 92px;
+  }
+}
+
 /* —— صفحات المدير بنفس حداثة الدخول/الخروج —— */
 
 /* بطاقات الإحصائيات: شريط علوي ملوّن حسب النوع */
