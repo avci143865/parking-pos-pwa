@@ -439,6 +439,19 @@ def _profile_fields_for_session(db: Session, row: ParkingSession) -> tuple[str |
     return prof.driver_name, prof.partnership_company, prof.vehicle_type
 
 
+def _profile_token_map(db: Session, rows: list[ParkingSession]) -> dict[int, str]:
+    """خريطة profile_id ← رمز QR الموحّد، باستعلام واحد."""
+    ids = {r.vehicle_profile_id for r in rows if r.vehicle_profile_id is not None}
+    if not ids:
+        return {}
+    pairs = db.execute(
+        select(VehicleProfile.id, VehicleProfile.public_token).where(
+            VehicleProfile.id.in_(ids)
+        )
+    ).all()
+    return {pid: _vehicle_qr_payload(tok) for pid, tok in pairs}
+
+
 def _fifo_status_for_session(db: Session, row: ParkingSession) -> FifoQueueStatus:
     truck = row.fifo_truck_type or DEFAULT_TRUCK_TYPE
     allowed = current_allowed_queue_number(db, truck)
@@ -859,6 +872,7 @@ def list_active(
         .order_by(ParkingSession.entered_at.desc())
     )
     rows = db.scalars(q).all()
+    tokens = _profile_token_map(db, rows)
     return [
         SessionHistoryItem(
             receipt_code=r.receipt_code,
@@ -869,6 +883,7 @@ def list_active(
             hours_billed=r.hours_billed,
             amount_due_cents=r.amount_due_cents,
             paid=r.paid,
+            qr_payload=tokens.get(r.vehicle_profile_id),
         )
         for r in rows
     ]
@@ -888,6 +903,7 @@ def list_history(
         .limit(limit)
     )
     rows = db.scalars(q).all()
+    tokens = _profile_token_map(db, rows)
     return [
         SessionHistoryItem(
             receipt_code=r.receipt_code,
@@ -898,6 +914,7 @@ def list_history(
             hours_billed=r.hours_billed,
             amount_due_cents=r.amount_due_cents,
             paid=r.paid,
+            qr_payload=tokens.get(r.vehicle_profile_id),
         )
         for r in rows
     ]
@@ -978,6 +995,7 @@ def list_sessions_log(
     limit = min(max(limit, 1), 500)
     q = select(ParkingSession).order_by(ParkingSession.entered_at.desc()).limit(limit)
     rows = db.scalars(q).all()
+    tokens = _profile_token_map(db, rows)
     return [
         SessionHistoryItem(
             receipt_code=r.receipt_code,
@@ -988,6 +1006,7 @@ def list_sessions_log(
             hours_billed=r.hours_billed,
             amount_due_cents=r.amount_due_cents,
             paid=r.paid,
+            qr_payload=tokens.get(r.vehicle_profile_id),
         )
         for r in rows
     ]
@@ -1301,7 +1320,17 @@ def employee_vehicle_scan(
         raise HTTPException(status_code=400, detail="رمز غير صالح.")
     prof = db.scalar(select(VehicleProfile).where(VehicleProfile.public_token == t))
     if prof is None:
-        raise HTTPException(status_code=404, detail="لم يُعثر على بروفايل بهذا الرمز.")
+        # توافق مع إيصالات قديمة مطبوعة برمز الإيصال: مسحها يجد الجلسة النشطة.
+        legacy_row = db.scalar(
+            select(ParkingSession).where(
+                func.lower(ParkingSession.receipt_code) == func.lower(t),
+                ParkingSession.exited_at.is_(None),
+            )
+        )
+        if legacy_row is not None and legacy_row.vehicle_profile_id is not None:
+            prof = db.get(VehicleProfile, legacy_row.vehicle_profile_id)
+        if prof is None:
+            raise HTTPException(status_code=404, detail="لم يُعثر على بروفايل بهذا الرمز.")
     active = db.scalar(
         select(ParkingSession).where(
             ParkingSession.vehicle_profile_id == prof.id,

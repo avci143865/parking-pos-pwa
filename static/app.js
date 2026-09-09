@@ -485,11 +485,12 @@ function buildCheckoutResultHtml(data) {
     </div>`;
 }
 
-function renderReceiptQr(receiptCode) {
+function renderReceiptQr(receiptCode, qrPayload) {
   const qrEl = $("receipt-qr-host");
   const plainEl = $("receipt-code-plain");
   if (plainEl) plainEl.textContent = receiptCode;
-  renderQrIntoHost(qrEl, receiptCode, 168);
+  // QR موحّد: رمز البروفايل نفسه — يعمل للدخول والخروج من الإيصال أو البطاقة.
+  renderQrIntoHost(qrEl, qrPayload || receiptCode, 168);
 }
 
 /**
@@ -1828,7 +1829,7 @@ function openReceiptModal(session) {
   modal.classList.remove("hidden");
   modal.removeAttribute("hidden");
   document.body.classList.add("modal-open");
-  renderReceiptQr(session.receipt_code);
+  renderReceiptQr(session.receipt_code, session.qr_payload || session.public_token);
   syncReceiptCardButton();
   $("receipt-modal-close").focus();
   window.ParkingPos?.maybeAutoPrint("receipt", runBrowserPrint);

@@ -79,6 +79,8 @@ class SessionHistoryItem(BaseModel):
     hours_billed: float | None
     amount_due_cents: int | None
     paid: bool
+    # رمز QR الموحّد (هو نفسه رمز بروفايل المركبة) — للدخول والخروج بأي منهما.
+    qr_payload: str | None = None
 
 
 class LoginRequest(BaseModel):
