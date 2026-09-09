@@ -1597,13 +1597,211 @@ code {
   color: #111;
 }
 
+/* —— أجهزة POS: شاشات صغيرة باللمس (Sunmi وأمثالها، 5–7 بوصة) —— */
+@media (max-width: 640px), (pointer: coarse) and (max-width: 900px) {
+  html {
+    font-size: 17px;
+  }
+
+  body {
+    overflow-x: clip;
+  }
+
+  .layout {
+    padding: 1rem 0.75rem calc(3rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .header {
+    gap: 0.9rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .header h1 {
+    font-size: 1.25rem;
+  }
+
+  /* شريط علوي مضغوط: الشعار فقط + تبويبات بتمرير أفقي */
+  .app-nav {
+    gap: 0.5rem;
+    padding: calc(0.6rem + env(safe-area-inset-top, 0px)) 0.75rem 0.6rem;
+  }
+
+  .app-brand-text {
+    display: none;
+  }
+
+  .nav-tabs-group {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .nav-tabs-group::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav-tab {
+    flex: 0 0 auto;
+    min-height: 44px;
+    padding: 0.55rem 0.9rem;
+    font-size: 0.92rem;
+  }
+
+  .nav-actions {
+    gap: 0.5rem;
+  }
+
+  /* أهداف لمس كبيرة: 48px على الأقل */
+  .btn {
+    min-height: 48px;
+    padding: 0.7rem 1rem;
+    font-size: 1rem;
+  }
+
+  .btn-sm,
+  .btn-sm-pad {
+    min-height: 44px;
+    padding: 0.5rem 0.8rem;
+    font-size: 0.9rem;
+  }
+
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    min-height: 48px;
+    font-size: 16px;
+    padding: 0.65rem 0.75rem;
+  }
+
+  .pos-check {
+    min-height: 48px;
+    font-size: 1rem;
+    gap: 0.6rem;
+  }
+
+  .pos-check input[type="checkbox"] {
+    width: 1.4rem;
+    height: 1.4rem;
+    flex-shrink: 0;
+    accent-color: var(--accent);
+  }
+
+  /* أزرار مكتب الدخول/الخروج بارزة وكاملة العرض */
+  .checkin-plate-input,
+  .checkout-receipt-input {
+    font-size: 1.15rem;
+    min-height: 54px;
+    text-align: center;
+  }
+
+  .btn-checkin-submit,
+  .btn-checkout-submit,
+  #vehicle-qr-start,
+  #vehicle-qr-stop {
+    min-height: 54px;
+    font-size: 1.05rem;
+    font-weight: 700;
+  }
+
+  .vehicle-qr-reader-host {
+    min-height: 200px;
+  }
+
+  .hero-stats {
+    gap: 0.5rem;
+  }
+
+  /* النوافذ كأوراق سفلية بأزرار مكدسة كاملة العرض */
+  .modal {
+    padding: 0.5rem;
+    align-items: flex-end;
+  }
+
+  .modal-dialog {
+    width: 100%;
+    max-width: 100%;
+    max-height: 94dvh;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .modal-footer .btn {
+    flex: 1 1 100%;
+    min-height: 52px;
+    font-size: 1.02rem;
+  }
+
+  /* الجداول بتمرير أفقي داخلي */
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  table {
+    font-size: 0.85rem;
+  }
+
+  th,
+  td {
+    padding: 0.55rem 0.5rem;
+  }
+
+  .stats-toolbar,
+  .fifo-actions {
+    width: 100%;
+  }
+
+  .fifo-toolbar-modern {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .login-layout {
+    min-height: 100dvh;
+    padding: 1.25rem 0.75rem;
+  }
+}
+
+/* شاشات أفقية قصيرة (POS مثبّت بشكل أفقي) */
+@media (max-height: 520px) and (orientation: landscape) {
+  .vehicle-qr-reader-host {
+    min-height: 150px;
+  }
+
+  .layout {
+    padding-top: 0.75rem;
+  }
+
+  .header {
+    margin-bottom: 0.9rem;
+  }
+
+  .modal {
+    align-items: center;
+  }
+}
+
 @media print {
   @page {
     size: auto;
     margin: 8mm;
   }
 
-  html,
+  /* صفحات مخصصة للإيصال الحراري: عرض ثابت وطول تلقائي (لفافة مستمرة) */
+  @page slip-80 {
+    size: 80mm auto;
+    margin: 0;
+  }
+
+  @page slip-58 {
+    size: 58mm auto;
+    margin: 0;
+  }
+
+  html:has(body.print-receipt-slip),
+  html:has(body.print-checkout-slip),
   body.print-receipt-slip,
   body.print-checkout-slip {
     width: 100% !important;
@@ -1615,24 +1813,21 @@ code {
     background: #fff !important;
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
-    display: flex !important;
-    justify-content: center !important;
-    align-items: flex-start !important;
+    display: block !important;
   }
 
+  /* إخفاء كل شيء داخل التطبيق ما عدا نافذة الإيصال/الفاتورة النشطة */
+  body.print-receipt-slip #app-shell > :not(#receipt-modal),
+  body.print-checkout-slip #app-shell > :not(#checkout-result-modal),
   body.print-receipt-slip #view-login,
-  body.print-receipt-slip .app-nav,
-  body.print-receipt-slip .layout,
-  body.print-receipt-slip #vehicle-card-modal,
-  body.print-receipt-slip #checkout-result-modal,
-  body.print-receipt-slip #vehicle-flow-modal,
-  body.print-receipt-slip #message-modal {
+  body.print-checkout-slip #view-login {
     display: none !important;
   }
 
   body.print-receipt-slip #receipt-modal {
     display: block !important;
     position: static !important;
+    page: slip-80;
     width: auto !important;
     max-width: 100% !important;
     height: auto !important;
@@ -1682,6 +1877,7 @@ code {
   body.print-checkout-slip #checkout-result-modal {
     display: block !important;
     position: static !important;
+    page: slip-80;
     width: auto !important;
     max-width: 100% !important;
     height: auto !important;
@@ -1717,18 +1913,9 @@ code {
     overflow: visible !important;
   }
 
-  html.print-width-80 {
-    @page {
-      size: 80mm auto;
-      margin: 2mm;
-    }
-  }
-
-  html.print-width-58 {
-    @page {
-      size: 58mm auto;
-      margin: 1.5mm;
-    }
+  html.print-width-58 body.print-receipt-slip #receipt-modal,
+  html.print-width-58 body.print-checkout-slip #checkout-result-modal {
+    page: slip-58;
   }
 
   html.print-width-58 body.print-receipt-slip #receipt-modal .modal-dialog,

@@ -1,14 +1,15 @@
 (function parkingPosPwa(global) {
   const KEYS = {
     autoCamera: "parking.pos.autoCamera",
-    autoPrint: "parking.pos.autoPrint",
+    // v2: الطباعة اليدوية هي الافتراضي — المستخدم يضغط زر الطباعة بنفسه.
+    autoPrint: "parking.pos.autoPrint.v2",
     paperWidth: "parking.pos.paperWidth",
     hardwareScan: "parking.pos.hardwareScan",
     blePrinterId: "parking.pos.blePrinterId",
   };
 
   const BLE_CHUNK = 180;
-  const ASSET = "20260909-3";
+  const ASSET = "20260909-4";
 
   const state = {
     deferredInstall: null,
@@ -44,7 +45,7 @@
     const paper = localStorage.getItem(KEYS.paperWidth) === "58" ? "58" : "80";
     return {
       autoCamera: readBool(KEYS.autoCamera, true),
-      autoPrint: readBool(KEYS.autoPrint, true),
+      autoPrint: readBool(KEYS.autoPrint, false),
       hardwareScan: readBool(KEYS.hardwareScan, true),
       paperWidth: paper,
     };
