@@ -44,8 +44,6 @@ class CheckInResponse(BaseModel):
     owner_name: str | None = None
     partnership_company: str | None = None
     mechanical_number: str | None = None
-    fifo_queue_number: int | None = None
-    fifo_truck_type: str | None = None
 
 
 class CheckOutRequest(BaseModel):
@@ -63,8 +61,6 @@ class CheckOutResponse(BaseModel):
     days_billed: int
     daily_rate_cents: int
     amount_due_cents: int
-    fifo_queue_number: int | None = None
-    fifo_truck_type: str | None = None
     driver_name: str | None = None
     partnership_company: str | None = None
     vehicle_type: str | None = None
@@ -171,76 +167,12 @@ class ActiveSessionBrief(BaseModel):
     entered_at: datetime
     slot_number: int
     license_plate: str
-    fifo_queue_number: int | None = None
-    fifo_truck_type: str | None = None
-
-
-class FifoQueueStatus(BaseModel):
-    can_exit: bool
-    queue_status: str = "waiting"
-    fifo_queue_number: int | None = None
-    fifo_truck_type: str | None = None
-    current_allowed_queue_number: int | None = None
-    waiting_count: int = 0
 
 
 class VehicleScanResponse(BaseModel):
     inside: bool
     profile: VehicleProfilePublic
     active_session: ActiveSessionBrief | None = None
-    fifo: FifoQueueStatus | None = None
-
-
-class FifoQueueItem(BaseModel):
-    session_id: int
-    fifo_queue_number: int
-    fifo_truck_type: str
-    license_plate: str
-    driver_name: str | None
-    partnership_company: str | None
-    entered_at: datetime
-    queue_status: str
-    is_current_turn: bool = False
-    can_exit: bool = False
-    receipt_code: str
-
-
-class FifoTypeQueue(BaseModel):
-    truck_type: str
-    waiting_count: int
-    ready_exit_count: int = 0
-    waiting_in_queue_count: int = 0
-    current_allowed_queue_number: int | None
-    items: list[FifoQueueItem]
-
-
-class FifoBatchExportRequest(BaseModel):
-    limits: dict[str, int] = Field(
-        default_factory=dict,
-        description="نوع الشاحنة → عدد المركبات من بداية الطابور",
-    )
-
-
-class FifoExitedItem(BaseModel):
-    license_plate: str
-    fifo_queue_number: int | None = None
-    fifo_truck_type: str | None = None
-    driver_name: str | None = None
-    partnership_company: str | None = None
-    exited_at: datetime
-    receipt_code: str
-
-
-class FifoDashboardResponse(BaseModel):
-    queues: list[FifoTypeQueue]
-    truck_types: list[str]
-    exited_recent: list[FifoExitedItem] = Field(default_factory=list)
-
-
-class FifoReleaseResponse(BaseModel):
-    released: dict[str, int] = Field(
-        description="نوع الشاحنة → عدد المركبات المُحرَّرة للخروج",
-    )
 
 
 class VehiclePublicRegisterResponse(BaseModel):

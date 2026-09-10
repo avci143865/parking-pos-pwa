@@ -1,7 +1,6 @@
 import mimetypes
 import os
 import uuid
-import zipfile
 from contextlib import asynccontextmanager
 from io import BytesIO
 from pathlib import Path
@@ -28,23 +27,6 @@ from app.deps import (
 )
 from openpyxl import Workbook
 
-from app.fifo_queue import (
-    DEFAULT_TRUCK_TYPE,
-    all_truck_types_for_export,
-    assign_fifo_to_session,
-    can_session_exit_fifo,
-    current_allowed_queue_number,
-    first_ready_exit_session,
-    normalize_truck_type,
-    queue_status_for_session,
-    queue_status_label,
-    release_fifo_sessions,
-    ready_exit_count_for_type,
-    truck_type_from_profile,
-    waiting_count_for_type,
-    waiting_in_queue_count_for_type,
-    FIFO_STATUS_READY,
-)
 from app.month_stats_service import build_month_stats_response
 from app.models import ParkingSession, ParkingSettings, User, VehicleProfile
 from app.receipt_codes import allocate_unique_receipt_code
@@ -58,13 +40,6 @@ from app.schemas import (
     CheckInResponse,
     CheckOutRequest,
     CheckOutResponse,
-    FifoBatchExportRequest,
-    FifoDashboardResponse,
-    FifoExitedItem,
-    FifoReleaseResponse,
-    FifoQueueItem,
-    FifoQueueStatus,
-    FifoTypeQueue,
     LoginRequest,
     LoginResponse,
     MonthStatsResponse,
@@ -84,7 +59,7 @@ from app.schemas import (
     VehicleScanResponse,
     VehicleTokenBody,
 )
-from app.time_damascus import damascus_now, damascus_today_date, utc_naive_to_damascus
+from app.time_damascus import damascus_today_date, utc_naive_to_damascus
 
 
 def seed_users_if_empty(db: Session) -> None:
@@ -347,14 +322,12 @@ def next_free_slot(db: Session, total: int) -> int | None:
 def _finalize_checkout_session(db: Session, row: ParkingSession) -> CheckOutResponse:
     if row.exited_at is not None:
         raise HTTPException(status_code=400, detail="تم خروج هذه المركبة مسبقًا.")
-    _assert_fifo_exit_allowed(db, row)
     s = get_settings_row(db)
     now = utc_now()
     days = billable_days(row.entered_at, now)
     duration_hrs = stay_duration_hours(row.entered_at, now)
     due = amount_due_cents(s.price_per_hour_cents, days)
-    fifo_num = row.fifo_queue_number
-    fifo_type = row.fifo_truck_type
+    legacy_type = row.fifo_truck_type
     driver, company, vtype = _profile_fields_for_session(db, row)
     row.exited_at = now
     row.hours_billed = float(days)
@@ -372,11 +345,9 @@ def _finalize_checkout_session(db: Session, row: ParkingSession) -> CheckOutResp
         days_billed=days,
         daily_rate_cents=s.price_per_hour_cents,
         amount_due_cents=due,
-        fifo_queue_number=fifo_num,
-        fifo_truck_type=fifo_type,
         driver_name=driver,
         partnership_company=company,
-        vehicle_type=vtype or fifo_type,
+        vehicle_type=vtype or legacy_type,
     )
 
 
@@ -452,36 +423,6 @@ def _profile_token_map(db: Session, rows: list[ParkingSession]) -> dict[int, str
     return {pid: _vehicle_qr_payload(tok) for pid, tok in pairs}
 
 
-def _fifo_status_for_session(db: Session, row: ParkingSession) -> FifoQueueStatus:
-    truck = row.fifo_truck_type or DEFAULT_TRUCK_TYPE
-    allowed = current_allowed_queue_number(db, truck)
-    return FifoQueueStatus(
-        can_exit=can_session_exit_fifo(db, row),
-        queue_status=queue_status_for_session(row),
-        fifo_queue_number=row.fifo_queue_number,
-        fifo_truck_type=row.fifo_truck_type,
-        current_allowed_queue_number=allowed,
-        waiting_count=waiting_count_for_type(db, truck),
-    )
-
-
-def _assert_fifo_exit_allowed(db: Session, row: ParkingSession) -> None:
-    if can_session_exit_fifo(db, row):
-        return
-    truck = row.fifo_truck_type or DEFAULT_TRUCK_TYPE
-    allowed = current_allowed_queue_number(db, truck)
-    raise HTTPException(
-        status_code=403,
-        detail={
-            "message": "المركبة في الانتظار — لم تُدرج ضمن المطلوب للخروج بعد.",
-            "vehicle_queue_number": row.fifo_queue_number,
-            "current_allowed_queue_number": allowed,
-            "fifo_truck_type": truck,
-            "queue_status": queue_status_for_session(row),
-        },
-    )
-
-
 def _create_active_session(
     db: Session,
     *,
@@ -491,9 +432,7 @@ def _create_active_session(
     receipt: str,
     now,
     notes: str,
-    truck_type: str | None = None,
 ) -> ParkingSession:
-    t_type = normalize_truck_type(truck_type or (truck_type_from_profile(prof) if prof else None))
     session_row = ParkingSession(
         receipt_code=receipt,
         license_plate=plate,
@@ -506,7 +445,6 @@ def _create_active_session(
         paid=False,
         vehicle_profile_id=prof.id if prof else None,
     )
-    assign_fifo_to_session(db, session_row, t_type)
     db.add(session_row)
     return session_row
 
@@ -538,143 +476,7 @@ def _checkin_response_from_session(
         owner_name=prof.owner_name if prof else None,
         partnership_company=company,
         mechanical_number=_mechanical_number(prof.mechanical_number) if prof else None,
-        fifo_queue_number=session_row.fifo_queue_number,
-        fifo_truck_type=session_row.fifo_truck_type,
     )
-
-
-def _build_fifo_dashboard(db: Session, search: str | None = None) -> FifoDashboardResponse:
-    q = (
-        select(ParkingSession, VehicleProfile)
-        .outerjoin(VehicleProfile, VehicleProfile.id == ParkingSession.vehicle_profile_id)
-        .where(
-            ParkingSession.exited_at.is_(None),
-            ParkingSession.fifo_queue_number.isnot(None),
-        )
-        .order_by(
-            ParkingSession.fifo_truck_type.asc(),
-            ParkingSession.fifo_queue_number.asc(),
-            ParkingSession.entered_at.asc(),
-        )
-    )
-    rows = db.execute(q).all()
-    needle = (search or "").strip().lower()
-    by_type: dict[str, list[FifoQueueItem]] = {}
-    discovered: list[str] = []
-    for sess, prof in rows:
-        truck = sess.fifo_truck_type or DEFAULT_TRUCK_TYPE
-        if truck not in discovered:
-            discovered.append(truck)
-        driver = prof.driver_name if prof else None
-        company = prof.partnership_company if prof else None
-        plate = sess.license_plate or ""
-        if needle:
-            hay = " ".join(
-                filter(
-                    None,
-                    [
-                        str(sess.fifo_queue_number),
-                        truck,
-                        plate,
-                        driver or "",
-                        company or "",
-                        sess.receipt_code,
-                    ],
-                )
-            ).lower()
-            if needle not in hay:
-                continue
-        status = queue_status_for_session(sess)
-        first_ready = first_ready_exit_session(db, truck)
-        is_turn = first_ready is not None and first_ready.id == sess.id
-        may_exit = can_session_exit_fifo(db, sess)
-        by_type.setdefault(truck, []).append(
-            FifoQueueItem(
-                session_id=sess.id,
-                fifo_queue_number=int(sess.fifo_queue_number or 0),
-                fifo_truck_type=truck,
-                license_plate=plate,
-                driver_name=driver,
-                partnership_company=company,
-                entered_at=sess.entered_at,
-                queue_status=status,
-                is_current_turn=is_turn,
-                can_exit=may_exit,
-                receipt_code=sess.receipt_code,
-            )
-        )
-    types = all_truck_types_for_export(discovered)
-    queues: list[FifoTypeQueue] = []
-    for truck in types:
-        items = by_type.get(truck, [])
-        if needle and not items:
-            continue
-        allowed = current_allowed_queue_number(db, truck)
-        queues.append(
-            FifoTypeQueue(
-                truck_type=truck,
-                waiting_count=waiting_count_for_type(db, truck) if not needle else len(items),
-                ready_exit_count=ready_exit_count_for_type(db, truck) if not needle else sum(
-                    1 for it in items if it.queue_status == FIFO_STATUS_READY
-                ),
-                waiting_in_queue_count=waiting_in_queue_count_for_type(db, truck)
-                if not needle
-                else sum(1 for it in items if it.queue_status != FIFO_STATUS_READY),
-                current_allowed_queue_number=allowed,
-                items=items,
-            )
-        )
-    if needle:
-        types = [q.truck_type for q in queues]
-    exited_recent = _fifo_exited_recent(db, needle=needle)
-    return FifoDashboardResponse(queues=queues, truck_types=types, exited_recent=exited_recent)
-
-
-def _fifo_exited_recent(db: Session, *, needle: str = "", limit: int = 48) -> list[FifoExitedItem]:
-    rows = db.execute(
-        select(ParkingSession, VehicleProfile)
-        .outerjoin(VehicleProfile, VehicleProfile.id == ParkingSession.vehicle_profile_id)
-        .where(
-            ParkingSession.exited_at.is_not(None),
-            ParkingSession.fifo_queue_number.isnot(None),
-        )
-        .order_by(ParkingSession.exited_at.desc())
-        .limit(limit)
-    ).all()
-    out: list[FifoExitedItem] = []
-    for sess, prof in rows:
-        plate = sess.license_plate or ""
-        truck = sess.fifo_truck_type or DEFAULT_TRUCK_TYPE
-        driver = prof.driver_name if prof else None
-        company = prof.partnership_company if prof else None
-        if needle:
-            hay = " ".join(
-                filter(
-                    None,
-                    [
-                        str(sess.fifo_queue_number),
-                        truck,
-                        plate,
-                        driver or "",
-                        company or "",
-                        sess.receipt_code,
-                    ],
-                )
-            ).lower()
-            if needle not in hay:
-                continue
-        out.append(
-            FifoExitedItem(
-                license_plate=plate,
-                fifo_queue_number=sess.fifo_queue_number,
-                fifo_truck_type=truck,
-                driver_name=driver,
-                partnership_company=company,
-                exited_at=sess.exited_at,
-                receipt_code=sess.receipt_code,
-            )
-        )
-    return out
 
 
 def _ensure_no_active_session_conflict(
@@ -825,7 +627,6 @@ def check_in(
         receipt=receipt,
         now=now,
         notes="\n".join(notes_parts),
-        truck_type=prof.vehicle_type,
     )
     db.commit()
     db.refresh(session_row)
@@ -1349,22 +1150,17 @@ def employee_vehicle_scan(
             detail="المركبة غير داخل الموقف. مسح الدخول متاح لحساب موظف الإدخال فقط.",
         )
     brief = None
-    fifo_status = None
     if active is not None:
         brief = ActiveSessionBrief(
             receipt_code=active.receipt_code,
             entered_at=active.entered_at,
             slot_number=active.slot_number,
             license_plate=active.license_plate,
-            fifo_queue_number=active.fifo_queue_number,
-            fifo_truck_type=active.fifo_truck_type,
         )
-        fifo_status = _fifo_status_for_session(db, active)
     return VehicleScanResponse(
         inside=inside,
         profile=_profile_public(prof),
         active_session=brief,
-        fifo=fifo_status,
     )
 
 
@@ -1401,7 +1197,6 @@ def employee_vehicle_check_in(
         receipt=receipt,
         now=now,
         notes=f"بروفايل #{prof.id}",
-        truck_type=prof.vehicle_type,
     )
     db.commit()
     db.refresh(session_row)
@@ -1491,286 +1286,6 @@ def admin_delete_vehicle_profile(
     db.delete(prof)
     db.commit()
     return OkResponse()
-
-
-def _admin_fifo_release_limits(
-    db: Session, limits: dict[str, int]
-) -> dict[str, int]:
-    released: dict[str, int] = {}
-    for raw_type, lim in limits.items():
-        if lim <= 0:
-            continue
-        t = normalize_truck_type(raw_type.strip())
-        n = release_fifo_sessions(db, t, lim)
-        if n > 0:
-            released[t] = n
-    if not released:
-        raise HTTPException(
-            status_code=400,
-            detail="لا توجد مركبات في الطوابير المحددة لتحرير الخروج.",
-        )
-    db.commit()
-    return released
-
-
-@app.post("/api/admin/fifo/release", response_model=FifoReleaseResponse)
-def admin_fifo_release(
-    body: FifoBatchExportRequest,
-    db: Session = Depends(get_db),
-    _admin: User = Depends(require_admin),
-):
-    """يُحرّر أول N مركبة في كل طابور للخروج عبر QR أو الإخراج اليدوي."""
-    return FifoReleaseResponse(released=_admin_fifo_release_limits(db, body.limits))
-
-
-@app.get("/api/fifo/dashboard", response_model=FifoDashboardResponse)
-def fifo_dashboard(
-    q: str | None = Query(None, max_length=120),
-    db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
-):
-    return _build_fifo_dashboard(db, q)
-
-
-def _fifo_pdf_filename(truck_type: str | None, ext: str = ".pdf") -> tuple[str, str]:
-    """اسم ملف ASCII آمن + عنوان عربي للتقرير."""
-    if truck_type and truck_type.strip():
-        t = normalize_truck_type(truck_type)
-        slug = "".join(c if c.isalnum() else "_" for c in t).strip("_") or "type"
-        return f"fifo-{slug}{ext}", f"أدوار الخروج — {t}"
-    return f"fifo-all{ext}", "أدوار الخروج — جميع الأنواع"
-
-
-def _fifo_pdf_title_limited(truck_type: str, limit: int, total: int) -> str:
-    t = normalize_truck_type(truck_type)
-    shown = min(limit, total)
-    if shown < total:
-        return f"أدوار الخروج — {t} (أول {shown})"
-    return f"أدوار الخروج — {t}"
-
-
-def _fifo_queue_to_pdf_dict(qrow: FifoTypeQueue, *, limit: int | None = None) -> dict:
-    items = qrow.items
-    export_limit: int | None = None
-    if limit is not None and limit > 0:
-        export_limit = limit
-        items = items[:limit]
-    allowed = qrow.current_allowed_queue_number
-    return {
-        "truck_type": qrow.truck_type,
-        "waiting_count": len(items),
-        "total_waiting": qrow.waiting_count,
-        "export_limit": export_limit,
-        "current_allowed_queue_number": allowed,
-        "items": [
-            {
-                "fifo_queue_number": it.fifo_queue_number,
-                "license_plate": it.license_plate,
-                "driver_name": it.driver_name,
-                "partnership_company": it.partnership_company,
-                "fifo_truck_type": it.fifo_truck_type,
-                "entered_at_display": _format_damascus_dt(it.entered_at),
-                "is_current_turn": it.is_current_turn,
-                "queue_status": it.queue_status,
-                "status_label": queue_status_label(it.queue_status),
-            }
-            for it in items
-        ],
-    }
-
-
-def _build_fifo_export_bytes(
-    queues: list[FifoTypeQueue],
-    *,
-    title: str,
-    limits: dict[str, int] | None = None,
-    export_format: str = "xlsx",
-) -> tuple[bytes, str, str]:
-    """يُرجع (محتوى الملف، نوع MIME، لاحقة الملف). export_format: pdf أو xlsx."""
-    pdf_queues = []
-    for qrow in queues:
-        lim = None
-        if limits is not None:
-            lim = limits.get(qrow.truck_type)
-        pdf_queues.append(_fifo_queue_to_pdf_dict(qrow, limit=lim))
-    exported_at = damascus_now()
-    want_pdf = export_format == "pdf"
-
-    if want_pdf:
-        try:
-            from app.fifo_pdf import build_fifo_queues_pdf
-
-            body = build_fifo_queues_pdf(
-                title=title,
-                exported_at=exported_at,
-                queues=pdf_queues,
-            )
-            return body, "application/pdf", ".pdf"
-        except Exception:
-            from app.fifo_xlsx import build_fifo_queues_xlsx
-
-            body = build_fifo_queues_xlsx(
-                title=title,
-                exported_at=exported_at,
-                queues=pdf_queues,
-            )
-            return (
-                body,
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                ".xlsx",
-            )
-
-    try:
-        from app.fifo_xlsx import build_fifo_queues_xlsx
-
-        body = build_fifo_queues_xlsx(
-            title=title,
-            exported_at=exported_at,
-            queues=pdf_queues,
-        )
-        return (
-            body,
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            ".xlsx",
-        )
-    except Exception:
-        from app.fifo_pdf import build_fifo_queues_pdf
-
-        body = build_fifo_queues_pdf(
-            title=title,
-            exported_at=exported_at,
-            queues=pdf_queues,
-        )
-        return body, "application/pdf", ".pdf"
-
-
-@app.get("/api/fifo/export")
-@app.get("/api/fifo/export.pdf")
-@app.get("/api/fifo/export.xlsx")
-def fifo_export_pdf(
-    request: Request,
-    truck_type: str | None = Query(None, max_length=64),
-    db: Session = Depends(get_db),
-    _user: User = Depends(get_current_user),
-):
-    dash = _build_fifo_dashboard(db, None)
-    if truck_type and truck_type.strip():
-        t = normalize_truck_type(truck_type)
-        queues = [q for q in dash.queues if q.truck_type == t]
-        title = _fifo_pdf_filename(t)[1]
-    else:
-        queues = dash.queues
-        title = _fifo_pdf_filename(None)[1]
-    if not queues:
-        raise HTTPException(status_code=404, detail="لا توجد مركبات في الطابور المطلوب.")
-    path = request.url.path.rstrip("/")
-    export_format = "pdf" if path.endswith(".pdf") else "xlsx"
-    body, media_type, ext = _build_fifo_export_bytes(
-        queues, title=title, export_format=export_format
-    )
-    filename, _ = _fifo_pdf_filename(
-        normalize_truck_type(truck_type) if truck_type and truck_type.strip() else None,
-        ext,
-    )
-    return Response(
-        content=body,
-        media_type=media_type,
-        headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
-            "Cache-Control": "no-store",
-        },
-    )
-
-
-@app.get("/api/admin/fifo/export")
-def admin_fifo_export_limited_pdf(
-    truck_type: str = Query(..., max_length=64),
-    limit: int = Query(..., ge=1, le=10_000),
-    db: Session = Depends(get_db),
-    _admin: User = Depends(require_admin),
-):
-    t = normalize_truck_type(truck_type)
-    dash = _build_fifo_dashboard(db, None)
-    qrow = next((q for q in dash.queues if q.truck_type == t), None)
-    if qrow is None or not qrow.items:
-        raise HTTPException(status_code=404, detail=f"لا توجد مركبات في طابور «{t}».")
-    release_fifo_sessions(db, t, limit)
-    db.commit()
-    dash = _build_fifo_dashboard(db, None)
-    qrow = next((q for q in dash.queues if q.truck_type == t), None)
-    if qrow is None or not qrow.items:
-        raise HTTPException(status_code=404, detail=f"لا توجد مركبات في طابور «{t}».")
-    actual = min(limit, len(qrow.items))
-    title = _fifo_pdf_title_limited(t, actual, qrow.waiting_count)
-    body, media_type, ext = _build_fifo_export_bytes(
-        [qrow], title=title, limits={t: actual}, export_format="xlsx"
-    )
-    slug = "".join(c if c.isalnum() else "_" for c in t).strip("_") or "type"
-    filename = f"fifo-{slug}-first-{actual}{ext}"
-    return Response(
-        content=body,
-        media_type=media_type,
-        headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
-            "Cache-Control": "no-store",
-        },
-    )
-
-
-@app.post("/api/admin/fifo/export-batch")
-def admin_fifo_export_batch_zip(
-    body: FifoBatchExportRequest,
-    db: Session = Depends(get_db),
-    _admin: User = Depends(require_admin),
-):
-    if not body.limits:
-        raise HTTPException(status_code=400, detail="حدّد عددًا واحدًا على الأقل.")
-    _admin_fifo_release_limits(db, body.limits)
-    dash = _build_fifo_dashboard(db, None)
-    by_type = {q.truck_type: q for q in dash.queues}
-    export_files: list[tuple[str, bytes, str]] = []
-    for raw_type, lim in body.limits.items():
-        if lim <= 0:
-            continue
-        t = normalize_truck_type(raw_type.strip())
-        qrow = by_type.get(t)
-        if qrow is None or not qrow.items:
-            continue
-        actual = min(lim, len(qrow.items))
-        title = _fifo_pdf_title_limited(t, actual, qrow.waiting_count)
-        file_body, media_type, ext = _build_fifo_export_bytes(
-            [qrow], title=title, limits={t: actual}, export_format="xlsx"
-        )
-        slug = "".join(c if c.isalnum() else "_" for c in t).strip("_") or "type"
-        export_files.append((f"fifo-{slug}-first-{actual}{ext}", file_body, media_type))
-    if not export_files:
-        raise HTTPException(
-            status_code=400,
-            detail="لا توجد أنواع أو أعداد صالحة للتصدير. تحقق من الأنواع والأعداد.",
-        )
-    if len(export_files) == 1:
-        name, content, media_type = export_files[0]
-        return Response(
-            content=content,
-            media_type=media_type,
-            headers={
-                "Content-Disposition": f'attachment; filename="{name}"',
-                "Cache-Control": "no-store",
-            },
-        )
-    zip_buf = BytesIO()
-    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for name, content, _media in export_files:
-            zf.writestr(name, content)
-    stamp = damascus_now().strftime("%Y%m%d-%H%M")
-    return Response(
-        content=zip_buf.getvalue(),
-        media_type="application/zip",
-        headers={
-            "Content-Disposition": f'attachment; filename="fifo-export-{stamp}.zip"',
-            "Cache-Control": "no-store",
-        },
-    )
 
 
 @app.get("/favicon.ico", include_in_schema=False)

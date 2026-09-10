@@ -5,8 +5,6 @@ const TOKEN_KEY = "parking_access_token";
 
 /** آخر تحميل لسجل التذاكر (للمعاينة السريعة) */
 let ticketLogCache = [];
-/** آخر تحميل لأدوار الخروج (لتصدير المدير) */
-let fifoDashboardCache = null;
 /** صفحة بروفايلات المركبات الحالية (من الخادم) */
 let vehicleProfileListCache = [];
 /** نص البحث في صفحة إدارة المركبات */
@@ -91,7 +89,6 @@ function applyRoleUI(me) {
   document.body.classList.toggle("role-employee", !isAdmin);
   $("nav-settings").classList.toggle("hidden", !isAdmin);
   $("nav-stats").classList.toggle("hidden", !isAdmin);
-  $("fifo-admin-export")?.classList.toggle("hidden", !isAdmin);
   $("user-banner").textContent = `${me.username} · ${roleLabel(me.role)}`;
   updateDeskLayout();
 }
@@ -384,9 +381,6 @@ async function api(path, options = {}) {
     }
     const err = new Error(msg);
     err.status = res.status;
-    if (data?.detail != null && typeof data.detail === "object" && !Array.isArray(data.detail)) {
-      err.fifoDetail = data.detail;
-    }
     throw err;
   }
   return data;
@@ -449,16 +443,10 @@ function buildCheckoutResultHtml(data) {
   const daysLabel = days === 1 ? "يوم واحد" : `${days} أيام`;
   const entered = formatDamascusDateTime(data.entered_at);
   const exited = formatDamascusDateTime(data.exited_at);
-  let fifoExtra = "";
-  if (data.fifo_queue_number != null || data.fifo_truck_type) {
-    const qNum = data.fifo_queue_number != null ? String(data.fifo_queue_number) : "—";
-    const qType = data.fifo_truck_type ? escapeHtml(data.fifo_truck_type) : "—";
-    fifoExtra += `<div><dt>نوع الشاحنة</dt><dd>${escapeHtml(data.vehicle_type || data.fifo_truck_type || "—")}</dd></div>`;
-    fifoExtra += `<div><dt>دور الخروج</dt><dd>${escapeHtml(qNum)} (${qType})</dd></div>`;
-  }
+  let driverExtra = "";
   if (data.driver_name || data.partnership_company) {
-    fifoExtra += `<div><dt>السائق</dt><dd>${escapeHtml(data.driver_name || "—")}</dd></div>`;
-    fifoExtra += `<div><dt>الشركة</dt><dd>${escapeHtml(data.partnership_company || "—")}</dd></div>`;
+    driverExtra += `<div><dt>السائق</dt><dd>${escapeHtml(data.driver_name || "—")}</dd></div>`;
+    driverExtra += `<div><dt>الشركة</dt><dd>${escapeHtml(data.partnership_company || "—")}</dd></div>`;
   }
   return `
     <div id="checkout-invoice-slip" class="checkout-invoice-slip thermal-slip" role="document" aria-label="فاتورة الموقف">
@@ -467,7 +455,7 @@ function buildCheckoutResultHtml(data) {
         <p class="invoice-code" dir="ltr">${escapeHtml(data.receipt_code)}</p>
       </header>
       <dl class="invoice-meta">
-        ${fifoExtra}
+        ${driverExtra}
         <div><dt>وقت الدخول</dt><dd>${escapeHtml(entered)}</dd></div>
         <div><dt>وقت الخروج</dt><dd>${escapeHtml(exited)}</dd></div>
         <div><dt>اللوحة</dt><dd>${escapeHtml(data.license_plate)}</dd></div>
@@ -544,7 +532,6 @@ function buildReceiptSlipHtml(p) {
           <dt>المكان</dt><dd>${escapeHtml(String(p.slot_number))}</dd>
           <dt>اللوحة</dt><dd>${escapeHtml(p.license_plate)}</dd>
           <dt>وقت الدخول</dt><dd>${escapeHtml(entered)}</dd>
-          ${p.fifo_queue_number != null ? `<dt>دور الخروج</dt><dd>${escapeHtml(String(p.fifo_queue_number))} (${escapeHtml(p.fifo_truck_type || p.vehicle_type || "—")})</dd>` : ""}
         </dl>
         ${extra}
         ${printIssuerFooterHtml()}
@@ -907,27 +894,8 @@ async function deleteVehicleProfile(row, force = false) {
   }
 }
 
-function buildFifoBlockedHtml(fifo, session) {
-  const vehQ = session?.fifo_queue_number ?? fifo?.fifo_queue_number ?? "—";
-  const allowed = fifo?.current_allowed_queue_number ?? "—";
-  const truck = fifo?.fifo_truck_type ?? session?.fifo_truck_type ?? "—";
-  return `
-    <div class="fifo-blocked panel-elevated-inner" role="alert">
-      <p class="fifo-blocked-title">المركبة في الانتظار</p>
-      <dl class="checkout-result-dl fifo-blocked-dl">
-        <div><dt>نوع الشاحنة</dt><dd>${escapeHtml(truck)}</dd></div>
-        <div><dt>دور المركبة</dt><dd>${escapeHtml(String(vehQ))}</dd></div>
-        <div><dt>الدور المسموح بالخروج</dt><dd class="fifo-allowed-num">${escapeHtml(String(allowed))}</dd></div>
-        <div><dt>عدد المنتظرين</dt><dd>${escapeHtml(String(fifo?.waiting_count ?? "—"))}</dd></div>
-      </dl>
-    </div>`;
-}
-
-function buildFifoSessionExtra(active, fifo) {
+function buildActiveSessionExtra(active) {
   const entered = formatDamascusDateTime(active.entered_at);
-  const qNum = active.fifo_queue_number != null ? String(active.fifo_queue_number) : "—";
-  const truck = active.fifo_truck_type || fifo?.fifo_truck_type || "—";
-  const statusLabel = fifo?.can_exit ? "قيد الخروج" : "في الانتظار";
   return `
     <div class="vehicle-flow-session panel-elevated-inner">
       <p class="checkout-micro muted">المركبة داخل الموقف حاليًا.</p>
@@ -935,9 +903,6 @@ function buildFifoSessionExtra(active, fifo) {
         <div><dt>وقت الدخول (دمشق)</dt><dd>${escapeHtml(entered)}</dd></div>
         <div><dt>المكان</dt><dd>${escapeHtml(String(active.slot_number))}</dd></div>
         <div><dt>رمز الإيصال</dt><dd dir="ltr">${escapeHtml(active.receipt_code)}</dd></div>
-        <div><dt>نوع الشاحنة</dt><dd>${escapeHtml(truck)}</dd></div>
-        <div><dt>دور الخروج</dt><dd>${escapeHtml(qNum)}</dd></div>
-        <div><dt>حالة الطابور</dt><dd>${escapeHtml(statusLabel)}</dd></div>
       </dl>
     </div>`;
 }
@@ -948,16 +913,14 @@ async function showVehicleFlowFromScan(publicToken, data) {
   const photoHtml = await fetchProfilePhotoHtml(data.profile.id, data.profile.has_photo);
   const body = `${photoHtml}${buildVehicleProfileDl(data.profile)}`;
   if (data.inside && data.active_session) {
-    const fifo = data.fifo || {};
-    const canExit = fifo.can_exit !== false;
-    const extra = buildFifoSessionExtra(data.active_session, fifo);
-    if (canExit && canCheckOut) {
+    const extra = buildActiveSessionExtra(data.active_session);
+    if (canCheckOut) {
       openVehicleFlowModal({
-        title: "خروج المركبة — قيد الخروج",
+        title: "خروج المركبة",
         bodyHtml:
           body +
           extra +
-          `<p class="checkout-micro muted">يمكن إتمام الخروج — المركبة ضمن المطلوب (قيد الخروج).</p>`,
+          `<p class="checkout-micro muted">يمكن إتمام الخروج وحساب الرسوم مباشرة.</p>`,
         primaryLabel: "إتمام الخروج وحساب الرسوم",
         showPrimary: true,
         onPrimary: async () => {
@@ -970,35 +933,18 @@ async function showVehicleFlowFromScan(publicToken, data) {
             openCheckoutResultModal(out);
             await refreshDeskData();
             if (!$("view-tickets").classList.contains("hidden")) await refreshTickets();
-            if (!$("view-fifo").classList.contains("hidden")) await refreshFifoDashboard();
           } catch (e) {
-            if (e.fifoDetail) {
-              openMessageModal(
-                "ليس دور هذه المركبة حالياً",
-                buildFifoBlockedHtml(e.fifoDetail, data.active_session),
-                true
-              );
-            } else {
-              alert(e.message);
-            }
+            alert(e.message);
           }
         },
       });
-    } else if (canExit && !canCheckOut) {
+    } else {
       openVehicleFlowModal({
         title: "المركبة داخل الموقف",
         bodyHtml:
           body +
           extra +
           `<p class="checkout-micro muted">هذا الحساب لا يملك صلاحية إخراج المركبات. استخدم حساب موظف الإخراج.</p>`,
-        primaryLabel: "",
-        showPrimary: false,
-        onPrimary: null,
-      });
-    } else {
-      openVehicleFlowModal({
-        title: "لا يمكن الخروج الآن",
-        bodyHtml: body + extra + buildFifoBlockedHtml(fifo, data.active_session),
         primaryLabel: "",
         showPrimary: false,
         onPrimary: null,
@@ -1038,12 +984,9 @@ async function showVehicleFlowFromScan(publicToken, data) {
               data.profile?.mechanical_number ?? cin.mechanical_number ?? null,
             registration_order: cin.registration_order ?? null,
             qr_payload: cin.qr_payload ?? publicToken,
-            fifo_queue_number: cin.fifo_queue_number ?? null,
-            fifo_truck_type: cin.fifo_truck_type ?? null,
           });
           await refreshDeskData();
           if (!$("view-tickets").classList.contains("hidden")) await refreshTickets();
-          if (!$("view-fifo").classList.contains("hidden")) await refreshFifoDashboard();
         } catch (e) {
           if (e.status === 409) openMessageModal("تعذّر الدخول", e.message);
           else alert(e.message);
@@ -1059,499 +1002,6 @@ async function showVehicleFlowFromScan(publicToken, data) {
       onPrimary: null,
     });
   }
-}
-
-function collectFifoLanes(data) {
-  const requested = [];
-  const exiting = [];
-  const done = [];
-  for (const q of data?.queues || []) {
-    for (const it of q.items || []) {
-      const row = { ...it, truck_type: it.fifo_truck_type || q.truck_type };
-      if (it.queue_status === "ready_exit") {
-        if (it.is_current_turn) exiting.push(row);
-        else requested.push(row);
-      } else {
-        requested.push(row);
-      }
-    }
-  }
-  for (const it of data?.exited_recent || []) {
-    done.push({ ...it, truck_type: it.fifo_truck_type || "—" });
-  }
-  const sortByQueue = (a, b) =>
-    (a.fifo_queue_number ?? 0) - (b.fifo_queue_number ?? 0) ||
-    String(a.truck_type).localeCompare(String(b.truck_type), "ar");
-  requested.sort(sortByQueue);
-  exiting.sort(sortByQueue);
-  done.sort((a, b) => new Date(b.exited_at) - new Date(a.exited_at));
-  return { requested, exiting, done };
-}
-
-function updateFifoHeroStats(data) {
-  const { requested, exiting, done } = collectFifoLanes(data);
-  const setCount = (id, n) => {
-    const el = $(id);
-    if (el) el.textContent = String(n);
-  };
-  setCount("fifo-count-requested", requested.length);
-  setCount("fifo-count-exiting", exiting.length);
-  setCount("fifo-count-done", done.length);
-  const updatedEl = $("fifo-stat-updated");
-  if (updatedEl) {
-    updatedEl.textContent = `آخر تحديث: ${new Date().toLocaleTimeString("ar-SY", {
-      timeZone: DAMASCUS_TZ,
-      hour: "2-digit",
-      minute: "2-digit",
-    })}`;
-  }
-}
-
-async function refreshFifoDashboard() {
-  const host = $("fifo-queues-host");
-  if (!host) return;
-  host.classList.add("fifo-loading");
-  const q = ($("fifo-search")?.value || "").trim();
-  const params = q ? `?q=${encodeURIComponent(q)}` : "";
-  try {
-    const data = await api(`/api/fifo/dashboard${params}`);
-    fifoDashboardCache = data;
-    updateFifoHeroStats(data);
-    renderFifoQueues(data);
-    renderFifoAdminExport(data);
-    $("fifo-export-all-image")?.classList.toggle("hidden", currentRole !== "admin");
-  } finally {
-    host.classList.remove("fifo-loading");
-  }
-}
-
-function renderFifoAdminExport(data) {
-  const section = $("fifo-admin-export");
-  const tbody = $("fifo-admin-export-body");
-  if (!section || !tbody) return;
-  const isAdmin = currentRole === "admin";
-  section.classList.toggle("hidden", !isAdmin);
-  if (!isAdmin) return;
-  const queues = (data?.queues || []).filter((q) => (q.waiting_count || 0) > 0);
-  if (!queues.length) {
-    tbody.innerHTML =
-      '<tr><td colspan="4" class="muted fifo-admin-empty">لا توجد مركبات في الطوابير حاليًا.</td></tr>';
-    return;
-  }
-  tbody.innerHTML = queues
-    .map((q) => {
-      const type = q.truck_type || "";
-      const max = q.waiting_count || 0;
-      return `<tr>
-        <td>${escapeHtml(type)}</td>
-        <td>${escapeHtml(String(max))}</td>
-        <td>
-          <input
-            type="number"
-            class="checkin-detail-input fifo-admin-limit-input"
-            min="1"
-            max="10000"
-            value="${max}"
-            data-waiting="${max}"
-            data-truck-type="${escapeHtml(type)}"
-            aria-label="عدد ${escapeHtml(type)}"
-          />
-        </td>
-        <td>
-          <button type="button" class="btn btn-sm fifo-admin-export-one" data-truck-type="${escapeHtml(type)}">
-            تنزيل صورة
-          </button>
-        </td>
-      </tr>`;
-    })
-    .join("");
-}
-
-function collectFifoExportLimits({ capToWaiting = true } = {}) {
-  const limits = {};
-  document.querySelectorAll(".fifo-admin-limit-input").forEach((inp) => {
-    const t = inp.getAttribute("data-truck-type") || "";
-    const max = parseInt(inp.getAttribute("data-waiting") || inp.getAttribute("max") || "0", 10);
-    let v = parseInt(inp.value, 10);
-    if (!t || !Number.isFinite(v) || v <= 0) return;
-    if (capToWaiting && Number.isFinite(max) && max > 0) v = Math.min(v, max);
-    limits[t] = v;
-  });
-  return limits;
-}
-
-async function releaseFifoForExport(limits) {
-  return api("/api/admin/fifo/release", {
-    method: "POST",
-    body: JSON.stringify({ limits }),
-  });
-}
-
-async function applyFifoReleaseFromForm(triggerBtn = null) {
-  const limits = collectFifoExportLimits({ capToWaiting: false });
-  if (!Object.keys(limits).length) {
-    alert("أدخل عددًا صالحًا أكبر من صفر في عمود «العدد المطلوب».");
-    return;
-  }
-  const msgEl = $("fifo-admin-export-msg");
-  const btn = triggerBtn || $("fifo-admin-release");
-  const prevText = btn?.textContent;
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = "جارٍ التحرير…";
-  }
-  if (msgEl) msgEl.textContent = "";
-  try {
-    const data = await releaseFifoForExport(limits);
-    const parts = Object.entries(data.released || {}).map(([t, n]) => `${t}: ${n}`);
-    if (msgEl) {
-      msgEl.textContent = parts.length
-        ? `تم التحديث: ${parts.join("؛ ")} — راجع أعمدة تم الطلب / قيد الخروج.`
-        : "تم.";
-    }
-    if (!$("view-fifo").classList.contains("hidden")) await refreshFifoDashboard();
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      if (prevText != null) btn.textContent = prevText;
-    }
-  }
-}
-
-function fifoQueueStatusLabel(it) {
-  if (it.queue_status === "ready_exit") {
-    return it.is_current_turn ? "قيد الخروج (الأول)" : "قيد الخروج";
-  }
-  return "في الانتظار";
-}
-
-function fifoExportStatusLabel(it) {
-  return fifoQueueStatusLabel(it);
-}
-
-function sliceFifoQueuesForExport(queues, truckType, limit) {
-  let list = queues || [];
-  if (truckType) {
-    list = list.filter((q) => q.truck_type === truckType);
-  }
-  if (!limit || limit <= 0) return list;
-  return list.map((q) => ({
-    ...q,
-    items: (q.items || []).slice(0, limit),
-    waiting_count: Math.min(q.waiting_count || 0, limit),
-  }));
-}
-
-function buildFifoQueuesFromLimits(allQueues, limits) {
-  const byType = new Map((allQueues || []).map((q) => [q.truck_type, q]));
-  const out = [];
-  for (const [type, lim] of Object.entries(limits)) {
-    const q = byType.get(type);
-    if (!q || !(q.items || []).length) continue;
-    out.push(...sliceFifoQueuesForExport([q], null, lim));
-  }
-  return out;
-}
-
-const FIFO_EXPORT_COLUMNS = [
-  { label: "رقم الدور", cellClass: "fifo-export-num" },
-  { label: "اللوحة", cellClass: "fifo-export-plate" },
-  { label: "السائق", cellClass: "" },
-  { label: "الشركة", cellClass: "" },
-  { label: "النوع", cellClass: "" },
-  { label: "الحالة", cellClass: "" },
-];
-
-function createFifoExportHeaderRow() {
-  const tr = document.createElement("tr");
-  tr.className = "fifo-export-head-row";
-  for (const col of FIFO_EXPORT_COLUMNS) {
-    const td = document.createElement("td");
-    td.className = `fifo-export-th${col.cellClass ? ` ${col.cellClass}` : ""}`;
-    td.setAttribute("dir", "rtl");
-    td.textContent = col.label;
-    tr.appendChild(td);
-  }
-  return tr;
-}
-
-function prepareFifoExportCloneForCapture(clonedDoc) {
-  clonedDoc.querySelectorAll(".fifo-export-sheet, .fifo-export-table").forEach((el) => {
-    el.setAttribute("dir", "rtl");
-  });
-  clonedDoc.querySelectorAll(".fifo-export-th, .fifo-export-head-row td").forEach((el) => {
-    el.setAttribute("dir", "rtl");
-    el.style.direction = "rtl";
-    el.style.unicodeBidi = "isolate";
-    el.style.textAlign = "right";
-  });
-}
-
-function buildFifoExportElement(queues, title) {
-  const root = document.createElement("div");
-  root.className = "fifo-export-sheet";
-  root.setAttribute("dir", "rtl");
-  const exportedAt = new Date().toLocaleString("ar-SY", {
-    timeZone: DAMASCUS_TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  root.innerHTML = `
-    <header class="fifo-export-header">
-      <h1>${escapeHtml(title)}</h1>
-      <p class="fifo-export-meta">تاريخ التصدير: ${escapeHtml(exportedAt)} (دمشق)</p>
-    </header>`;
-
-  if (!queues.length) {
-    const p = document.createElement("p");
-    p.className = "fifo-export-empty";
-    p.textContent = "لا توجد مركبات في الطابور المطلوب.";
-    root.appendChild(p);
-    return root;
-  }
-
-  for (const q of queues) {
-    const section = document.createElement("section");
-    section.className = "fifo-export-queue";
-    const allowed =
-      q.current_allowed_queue_number != null ? String(q.current_allowed_queue_number) : "—";
-    const waiting = q.waiting_count ?? (q.items || []).length;
-    section.innerHTML = `<h2 class="fifo-export-queue-title">نوع الشاحنة: ${escapeHtml(q.truck_type || "—")} | منتظر: ${escapeHtml(String(waiting))} | الدور المسموح: ${escapeHtml(allowed)}</h2>`;
-
-    const items = q.items || [];
-    if (!items.length) {
-      const p = document.createElement("p");
-      p.className = "fifo-export-empty";
-      p.textContent = "لا توجد مركبات في هذا الطابور.";
-      section.appendChild(p);
-    } else {
-      const rows = items
-        .map((it) => {
-          const turn = it.queue_status === "ready_exit";
-          const status = fifoExportStatusLabel(it);
-          return `<tr class="${turn ? "fifo-export-row-turn" : ""}">
-            <td class="fifo-export-num">${escapeHtml(String(it.fifo_queue_number ?? "—"))}</td>
-            <td class="fifo-export-plate">${escapeHtml(it.license_plate || "—")}</td>
-            <td>${escapeHtml(it.driver_name || "—")}</td>
-            <td>${escapeHtml(it.partnership_company || "—")}</td>
-            <td>${escapeHtml(it.fifo_truck_type || q.truck_type || "—")}</td>
-            <td>${escapeHtml(status)}</td>
-          </tr>`;
-        })
-        .join("");
-      const table = document.createElement("table");
-      table.className = "fifo-export-table";
-      table.setAttribute("dir", "rtl");
-      const tbody = document.createElement("tbody");
-      tbody.appendChild(createFifoExportHeaderRow());
-      tbody.insertAdjacentHTML("beforeend", rows);
-      table.appendChild(tbody);
-      section.appendChild(table);
-    }
-    root.appendChild(section);
-  }
-  return root;
-}
-
-async function captureFifoExportPng(element) {
-  if (typeof html2canvas === "undefined") {
-    throw new Error("تعذّر تحميل أداة التصدير. تحقق من الاتصال وأعد تحميل الصفحة.");
-  }
-  if (document.fonts?.ready) await document.fonts.ready;
-  const bg =
-    getComputedStyle(document.documentElement).getPropertyValue("--bg-elevated").trim() ||
-    "#0f141c";
-  const canvas = await html2canvas(element, {
-    scale: 2,
-    useCORS: true,
-    logging: false,
-    backgroundColor: bg,
-    onclone: prepareFifoExportCloneForCapture,
-  });
-  return canvas;
-}
-
-function triggerPngDownload(canvas, filename) {
-  const a = document.createElement("a");
-  a.href = canvas.toDataURL("image/png");
-  a.download = filename.endsWith(".png") ? filename : `${filename}.png`;
-  a.click();
-}
-
-async function fetchFifoQueuesForExport() {
-  const data = await api("/api/fifo/dashboard");
-  return data.queues || [];
-}
-
-async function downloadFifoImage(truckType, triggerBtn = null, { limit = null, limits = null } = {}) {
-  const exportBtn = triggerBtn || $("fifo-export-all-image");
-  const prevHtml = exportBtn?.innerHTML;
-  const prevText = exportBtn?.textContent;
-  const msgEl = $("fifo-admin-export-msg");
-  if (exportBtn) {
-    exportBtn.disabled = true;
-    if (triggerBtn && !exportBtn.querySelector(".fifo-btn-label")) {
-      exportBtn.textContent = "…";
-    } else if (!triggerBtn) {
-      exportBtn.innerHTML = '<span class="fifo-btn-label">جارٍ التصدير…</span>';
-    }
-  }
-  if (msgEl) msgEl.textContent = "";
-  let host = null;
-  try {
-    const allQueues = await fetchFifoQueuesForExport();
-    let queues;
-    let title;
-    if (limits && Object.keys(limits).length) {
-      queues = buildFifoQueuesFromLimits(allQueues, limits);
-      title = "أدوار الخروج — أنواع محددة";
-    } else if (truckType) {
-      queues = sliceFifoQueuesForExport(allQueues, truckType, limit);
-      title =
-        limit && queues[0]
-          ? `أدوار الخروج — ${truckType} (أول ${queues[0].items?.length || limit})`
-          : `أدوار الخروج — ${truckType}`;
-    } else {
-      queues = allQueues;
-      title = "أدوار الخروج — جميع الأنواع";
-    }
-    if (!queues.length) {
-      throw new Error("لا توجد مركبات في الطابور المطلوب.");
-    }
-    const sheet = buildFifoExportElement(queues, title);
-    host = document.createElement("div");
-    host.className = "fifo-export-capture-host";
-    host.appendChild(sheet);
-    document.body.appendChild(host);
-    const canvas = await captureFifoExportPng(sheet);
-    const slug = truckType
-      ? String(truckType).replace(/[^\w\u0600-\u06FF-]+/g, "_")
-      : limits
-        ? "selected"
-        : "all";
-    const suffix = limit ? `-first-${limit}` : "";
-    triggerPngDownload(canvas, `fifo-${slug}${suffix}.png`);
-    if (msgEl) msgEl.textContent = "تم تنزيل الصورة.";
-  } finally {
-    if (host?.parentNode) host.parentNode.removeChild(host);
-    if (exportBtn) {
-      exportBtn.disabled = false;
-      if (prevHtml != null && exportBtn.querySelector(".fifo-btn-label")) {
-        exportBtn.innerHTML = prevHtml;
-      } else if (prevText != null) {
-        exportBtn.textContent = prevText;
-      }
-    }
-  }
-}
-
-async function downloadAdminFifoExport(truckType, limit, triggerBtn = null) {
-  await releaseFifoForExport({ [truckType]: limit });
-  if (!$("view-fifo").classList.contains("hidden")) await refreshFifoDashboard();
-  const waiting = fifoDashboardCache?.queues?.find((q) => q.truck_type === truckType)?.waiting_count;
-  const imageLimit =
-    Number.isFinite(waiting) && waiting > 0 ? Math.min(limit, waiting) : limit;
-  return downloadFifoImage(truckType, triggerBtn, { limit: imageLimit });
-}
-
-async function downloadAdminFifoBatchImages(triggerBtn = null) {
-  const limits = collectFifoExportLimits({ capToWaiting: false });
-  const types = Object.keys(limits);
-  if (!types.length) {
-    alert("حدّد عددًا واحدًا على الأقل في الجدول.");
-    return;
-  }
-  await releaseFifoForExport(limits);
-  if (!$("view-fifo").classList.contains("hidden")) await refreshFifoDashboard();
-  const imageLimits = collectFifoExportLimits({ capToWaiting: true });
-  return downloadFifoImage(null, triggerBtn || $("fifo-admin-export-batch"), {
-    limits: imageLimits,
-  });
-}
-
-function renderFifoQueues(data) {
-  const host = $("fifo-queues-host");
-  if (!host) return;
-  const queues = data.queues || [];
-  if (!queues.length) {
-    host.innerHTML = `
-      <div class="fifo-empty-state">
-        <div class="fifo-empty-icon" aria-hidden="true">⏳</div>
-        <p class="fifo-empty-title">لا توجد مركبات في الطوابير</p>
-        <p class="muted fifo-empty-hint">عند دخول شاحنة يظهر دورها هنا تلقائيًا حسب نوعها.</p>
-      </div>`;
-    return;
-  }
-  host.innerHTML = `<div class="fifo-grid">${queues.map(renderFifoTypeCard).join("")}</div>`;
-  host.querySelectorAll(".fifo-export-type").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const t = btn.getAttribute("data-truck-type") || "";
-      downloadFifoImage(t, btn).catch((e) => alert(e.message));
-    });
-  });
-}
-
-function renderFifoTypeCard(q) {
-  const isAdmin = currentRole === "admin";
-  const allowed =
-    q.current_allowed_queue_number != null ? String(q.current_allowed_queue_number) : "—";
-  const items = q.items || [];
-  const listHtml = items.length
-    ? items.map((it) => renderFifoQueueItem(it)).join("")
-    : '<p class="muted fifo-no-results">لا نتائج مطابقة للبحث</p>';
-  const imgBtn = isAdmin
-    ? '<button type="button" class="btn btn-sm-pad btn-ghost fifo-export-type" data-truck-type="' + escapeHtml(q.truck_type) + '" title="تنزيل صورة">صورة</button>'
-    : "";
-  return `
-    <article class="fifo-card">
-      <header class="fifo-card-header">
-        <div class="fifo-card-title-wrap">
-          <span class="fifo-card-badge">${escapeHtml(q.truck_type)}</span>
-          <h3 class="fifo-card-title">طابور ${escapeHtml(q.truck_type)}</h3>
-        </div>
-        ${imgBtn}
-      </header>
-      <div class="fifo-card-metrics">
-        <div class="fifo-metric">
-          <span class="fifo-metric-label">في الانتظار</span>
-          <span class="fifo-metric-value">${escapeHtml(String(q.waiting_in_queue_count ?? 0))}</span>
-        </div>
-        <div class="fifo-metric fifo-metric-highlight">
-          <span class="fifo-metric-label">قيد الخروج</span>
-          <span class="fifo-metric-value fifo-allowed-num">${escapeHtml(String(q.ready_exit_count ?? 0))}</span>
-        </div>
-        <div class="fifo-metric">
-          <span class="fifo-metric-label">أول قيد الخروج</span>
-          <span class="fifo-metric-value">${escapeHtml(allowed)}</span>
-        </div>
-      </div>
-      <ol class="fifo-queue-list">${listHtml}</ol>
-    </article>`;
-}
-
-function renderFifoQueueItem(it) {
-  const ready = it.queue_status === "ready_exit";
-  const statusClass = ready ? "fifo-queue-item-current" : "fifo-queue-item-wait";
-  const statusLabel = fifoQueueStatusLabel(it);
-  return `
-    <li class="fifo-queue-item ${statusClass}">
-      <div class="fifo-queue-num">${escapeHtml(String(it.fifo_queue_number))}</div>
-      <div class="fifo-queue-body">
-        <div class="fifo-queue-row-top">
-          <span class="fifo-queue-plate" dir="ltr">${escapeHtml(it.license_plate)}</span>
-          <span class="fifo-queue-status">${escapeHtml(statusLabel)}</span>
-        </div>
-        <div class="fifo-queue-meta">
-          <span>${escapeHtml(it.driver_name || "—")}</span>
-          <span class="fifo-queue-dot">·</span>
-          <span>${escapeHtml(it.partnership_company || "—")}</span>
-        </div>
-        <time class="fifo-queue-time">${escapeHtml(formatDamascusDateTime(it.entered_at))}</time>
-      </div>
-    </li>`;
 }
 
 async function processVehicleScan(raw) {
@@ -2070,23 +1520,20 @@ function setView(name) {
   const desk = $("view-desk");
   const tickets = $("view-tickets");
   const profiles = $("view-profiles");
-  const fifo = $("view-fifo");
   const stats = $("view-stats");
   const settings = $("view-settings");
   const tabDesk = $("nav-desk");
   const tabTickets = $("nav-tickets");
   const tabProfiles = $("nav-profiles");
-  const tabFifo = $("nav-fifo");
   const tabStats = $("nav-stats");
   const tabSettings = $("nav-settings");
 
-  if (!desk || !tickets || !profiles || !fifo || !stats || !settings) return;
-  if (!tabDesk || !tabTickets || !tabProfiles || !tabFifo || !tabStats || !tabSettings) return;
+  if (!desk || !tickets || !profiles || !stats || !settings) return;
+  if (!tabDesk || !tabTickets || !tabProfiles || !tabStats || !tabSettings) return;
 
   const isDesk = name === "desk";
   const isTickets = name === "tickets";
   const isProfiles = name === "profiles";
-  const isFifo = name === "fifo";
   const isStats = name === "stats";
   const isSettings = name === "settings";
 
@@ -2096,8 +1543,6 @@ function setView(name) {
   tickets.toggleAttribute("hidden", !isTickets);
   profiles.classList.toggle("hidden", !isProfiles);
   profiles.toggleAttribute("hidden", !isProfiles);
-  fifo.classList.toggle("hidden", !isFifo);
-  fifo.toggleAttribute("hidden", !isFifo);
   stats.classList.toggle("hidden", !isStats);
   stats.toggleAttribute("hidden", !isStats);
   settings.classList.toggle("hidden", !isSettings);
@@ -2106,7 +1551,6 @@ function setView(name) {
   tabDesk.classList.toggle("active", isDesk);
   tabTickets.classList.toggle("active", isTickets);
   tabProfiles.classList.toggle("active", isProfiles);
-  tabFifo.classList.toggle("active", isFifo);
   tabStats.classList.toggle("active", isStats);
   tabSettings.classList.toggle("active", isSettings);
 
@@ -2116,8 +1560,6 @@ function setView(name) {
     refreshTickets().catch((e) => alert(e.message));
   } else if (isProfiles) {
     refreshVehicleProfiles().catch((e) => alert(e.message));
-  } else if (isFifo) {
-    refreshFifoDashboard().catch((e) => alert(e.message));
   } else if (isStats) {
     if (!$("stats-month").value) {
       $("stats-month").value = new Date()
@@ -2136,40 +1578,7 @@ function wireNav() {
   $("nav-desk").addEventListener("click", () => setView("desk"));
   $("nav-tickets").addEventListener("click", () => setView("tickets"));
   $("nav-profiles")?.addEventListener("click", () => setView("profiles"));
-  $("nav-fifo")?.addEventListener("click", () => setView("fifo"));
   $("nav-stats").addEventListener("click", () => setView("stats"));
-  $("fifo-refresh")?.addEventListener("click", () => {
-    refreshFifoDashboard().catch((e) => alert(e.message));
-  });
-  $("fifo-export-all-image")?.addEventListener("click", () => {
-    downloadFifoImage("").catch((e) => alert(e.message));
-  });
-  $("fifo-admin-release")?.addEventListener("click", (e) => {
-    applyFifoReleaseFromForm(e.currentTarget).catch((err) => alert(err.message));
-  });
-  $("fifo-admin-export-batch")?.addEventListener("click", (e) => {
-    downloadAdminFifoBatchImages(e.currentTarget).catch((err) => alert(err.message));
-  });
-  $("fifo-admin-export-body")?.addEventListener("click", (e) => {
-    const btn = e.target.closest(".fifo-admin-export-one");
-    if (!btn) return;
-    const row = btn.closest("tr");
-    const inp = row?.querySelector(".fifo-admin-limit-input");
-    const truckType = btn.getAttribute("data-truck-type") || inp?.getAttribute("data-truck-type") || "";
-    let limit = parseInt(inp?.value || "", 10);
-    if (!truckType || !Number.isFinite(limit) || limit <= 0) {
-      alert("أدخل عددًا صالحًا أكبر من صفر.");
-      return;
-    }
-    downloadAdminFifoExport(truckType, limit, btn).catch((err) => alert(err.message));
-  });
-  let fifoSearchTimer = null;
-  $("fifo-search")?.addEventListener("input", () => {
-    clearTimeout(fifoSearchTimer);
-    fifoSearchTimer = setTimeout(() => {
-      refreshFifoDashboard().catch((e) => alert(e.message));
-    }, 300);
-  });
   $("nav-settings").addEventListener("click", () => setView("settings"));
   $("tickets-refresh").addEventListener("click", () => {
     refreshTickets().catch((e) => alert(e.message));
@@ -2855,8 +2264,6 @@ $("checkin-form").addEventListener("submit", async (e) => {
       mechanical_number: data.mechanical_number || mechVal || null,
       registration_order: data.registration_order ?? null,
       qr_payload: data.qr_payload ?? null,
-      fifo_queue_number: data.fifo_queue_number ?? null,
-      fifo_truck_type: data.fifo_truck_type ?? null,
     });
     $("plate").value = "";
     $("mech").value = "";
@@ -2870,9 +2277,6 @@ $("checkin-form").addEventListener("submit", async (e) => {
     await refreshDeskData();
     if (!$("view-tickets").classList.contains("hidden")) {
       await refreshTickets();
-    }
-    if (!$("view-fifo").classList.contains("hidden")) {
-      await refreshFifoDashboard();
     }
     if (!$("view-profiles").classList.contains("hidden")) {
       await refreshVehicleProfiles();
@@ -2902,25 +2306,11 @@ $("checkout-form").addEventListener("submit", async (e) => {
     if (!$("view-tickets").classList.contains("hidden")) {
       await refreshTickets();
     }
-    if (!$("view-fifo").classList.contains("hidden")) {
-      await refreshFifoDashboard();
-    }
     if (!$("view-stats").classList.contains("hidden")) {
       await refreshMonthStats();
     }
   } catch (err) {
-    if (err.fifoDetail) {
-      openMessageModal(
-        "ليس دور هذه المركبة حالياً",
-        buildFifoBlockedHtml(err.fifoDetail, {
-          fifo_queue_number: err.fifoDetail.vehicle_queue_number,
-          fifo_truck_type: err.fifoDetail.fifo_truck_type,
-        }),
-        true
-      );
-    } else {
-      alert(err.message);
-    }
+    alert(err.message);
   } finally {
     doneBusy();
   }

@@ -13,8 +13,8 @@
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
   <link rel="alternate icon" href="/favicon.ico" />
   <link rel="apple-touch-icon" href="/static/pwa-icon-192.png" />
-  <script src="/static/theme.js?v=20260910-8"></script>
-  <link rel="stylesheet" href="/static/styles.css?v=20260910-8" />
+  <script src="/static/theme.js?v=20260910-9"></script>
+  <link rel="stylesheet" href="/static/styles.css?v=20260910-9" />
 </head>
 <body>
   <!-- شاشة تسجيل الدخول -->
@@ -49,7 +49,6 @@
         <button type="button" class="nav-tab active" id="nav-desk" data-view="desk">الإدخال والإخراج</button>
         <button type="button" class="nav-tab" id="nav-tickets" data-view="tickets">سجل التذاكر</button>
         <button type="button" class="nav-tab" id="nav-profiles" data-view="profiles">ادارة المركبات</button>
-        <button type="button" class="nav-tab" id="nav-fifo" data-view="fifo">أدوار الخروج</button>
         <button type="button" class="nav-tab nav-admin-only" id="nav-stats" data-view="stats">الإحصائيات</button>
         <button type="button" class="nav-tab nav-admin-only" id="nav-settings" data-view="settings">الإعدادات</button>
       </div>
@@ -328,67 +327,6 @@
       </div>
     </div>
 
-    <div class="layout hidden" id="view-fifo">      <header class="header header-desk fifo-page-header">
-        <div class="fifo-page-head">
-          <h1>أدوار الخروج</h1>
-          <p class="muted header-tagline">متابعة سريعة حسب حالة الطلب والخروج</p>
-          <p class="fifo-updated-hint muted" id="fifo-stat-updated" aria-live="polite">—</p>
-        </div>
-      </header>
-      <div class="fifo-lanes-summary" id="fifo-lanes-summary" aria-live="polite">
-        <article class="fifo-lane-summary fifo-lane-summary-requested">
-          <span class="fifo-lane-summary-label">تم الطلب</span>
-          <span class="fifo-lane-summary-count" id="fifo-count-requested">0</span>
-        </article>
-        <article class="fifo-lane-summary fifo-lane-summary-exiting">
-          <span class="fifo-lane-summary-label">قيد الخروج</span>
-          <span class="fifo-lane-summary-count" id="fifo-count-exiting">0</span>
-        </article>
-        <article class="fifo-lane-summary fifo-lane-summary-done">
-          <span class="fifo-lane-summary-label">خرجت</span>
-          <span class="fifo-lane-summary-count" id="fifo-count-done">0</span>
-        </article>
-      </div>
-<section class="panel panel-elevated fifo-admin-export hidden nav-admin-only" id="fifo-admin-export" aria-labelledby="fifo-admin-export-title">
-        <h2 class="panel-title" id="fifo-admin-export-title">تصدير أدوار محددة (للمدير)</h2>
-        <p class="muted fifo-admin-lead">في عمود «العدد المطلوب» ضع أي عدد — أول ذلك العدد يصبح <strong>قيد الخروج</strong> والباقي <strong>في الانتظار</strong>. بعد الخروج الفعلي تُزال المركبة من الطابور وتظهر في سجل التذاكر كـ «تم الخروج». اضغط «تحرير للخروج حسب العدد».</p>
-        <div class="fifo-admin-export-table-wrap">
-          <table class="fifo-admin-export-table">
-            <thead>
-              <tr>
-                <th>نوع الشاحنة</th>
-                <th>في الطابور</th>
-                <th>العدد المطلوب</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="fifo-admin-export-body"></tbody>
-          </table>
-        </div>
-        <div class="fifo-admin-export-actions">
-          <button type="button" class="btn primary" id="fifo-admin-release">تحرير للخروج حسب العدد</button>
-          <button type="button" class="btn btn-ghost" id="fifo-admin-export-batch">تنزيل صورة لكل الأنواع المحددة</button>
-        </div>
-        <p id="fifo-admin-export-msg" class="hint muted" aria-live="polite"></p>
-      </section>
-      <section class="panel panel-elevated fifo-panel">
-        <div class="fifo-toolbar-modern">
-          <div class="fifo-search-wrap">
-            <span class="fifo-search-icon" aria-hidden="true">⌕</span>
-            <input type="search" id="fifo-search" class="fifo-search-input" placeholder="بحث: لوحة، سائق، شركة، رقم الدور..." autocomplete="off" />
-          </div>
-          <div class="fifo-actions">
-            <button type="button" class="btn btn-ghost btn-sm-pad" id="fifo-refresh">تحديث</button>
-            <button type="button" class="btn primary btn-sm-pad" id="fifo-export-all-image">
-              <span class="fifo-btn-label">تنزيل صورة</span>
-              <span class="fifo-btn-sub">جميع الأنواع</span>
-            </button>
-          </div>
-        </div>
-        <div id="fifo-queues-host" class="fifo-queues-host" aria-live="polite"></div>
-      </section>
-    </div>
-
     <div class="layout hidden" id="view-stats">
       <header class="header header-stats">
         <div>
@@ -597,11 +535,11 @@
     </div>
   </div>
 
-  <script src="/static/vendor/html5-qrcode.min.js?v=20260910-8"></script>
-  <script src="/static/vendor/qrcode.min.js?v=20260910-8"></script>
-  <script src="/static/vendor/html2canvas.min.js?v=20260910-8"></script>
-  <script src="/static/vendor/jszip.min.js?v=20260910-8"></script>
-  <script src="/static/pos-pwa.js?v=20260910-8"></script>
-  <script src="/static/app.js?v=20260910-8"></script>
+  <script src="/static/vendor/html5-qrcode.min.js?v=20260910-9"></script>
+  <script src="/static/vendor/qrcode.min.js?v=20260910-9"></script>
+  <script src="/static/vendor/html2canvas.min.js?v=20260910-9"></script>
+  <script src="/static/vendor/jszip.min.js?v=20260910-9"></script>
+  <script src="/static/pos-pwa.js?v=20260910-9"></script>
+  <script src="/static/app.js?v=20260910-9"></script>
 </body>
 </html>
