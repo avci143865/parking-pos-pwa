@@ -4010,3 +4010,10 @@ body {
   color: var(--text);
   background: var(--surface-2);
 }
+
+/* نجمة الحقول الإلزامية */
+.req-mark {
+  color: #f87171;
+  font-weight: 800;
+  margin-inline-start: 0.15rem;
+}

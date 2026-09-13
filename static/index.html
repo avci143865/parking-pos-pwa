@@ -13,8 +13,8 @@
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
   <link rel="alternate icon" href="/favicon.ico" />
   <link rel="apple-touch-icon" href="/static/pwa-icon-192.png" />
-  <script src="/static/theme.js?v=20260910-12"></script>
-  <link rel="stylesheet" href="/static/styles.css?v=20260910-12" />
+  <script src="/static/theme.js?v=20260910-13"></script>
+  <link rel="stylesheet" href="/static/styles.css?v=20260910-13" />
 </head>
 <body>
   <!-- شاشة تسجيل الدخول -->
@@ -29,8 +29,8 @@
       <h1 class="login-title">تسجيل الدخول</h1>
       <p class="muted login-lead">أدخل بيانات الحساب للمتابعة.</p>
       <form id="login-form" class="stack-form">
-        <label>اسم المستخدم <input type="text" id="login-user" required autocomplete="username" /></label>
-        <label>كلمة المرور <span class="pass-wrap"><input type="password" id="login-pass" required autocomplete="current-password" /><button type="button" class="pass-toggle" data-pass-for="login-pass" aria-label="إظهار كلمة المرور" title="إظهار كلمة المرور">👁</button></span></label>
+        <label>اسم المستخدم <span class="req-mark">*</span> <input type="text" id="login-user" required autocomplete="username" /></label>
+        <label>كلمة المرور <span class="req-mark">*</span> <span class="pass-wrap"><input type="password" id="login-pass" required autocomplete="current-password" /><button type="button" class="pass-toggle" data-pass-for="login-pass" aria-label="إظهار كلمة المرور" title="إظهار كلمة المرور">👁</button></span></label>
         <button type="submit" class="btn primary">دخول</button>
       </form>
       <p id="login-error" class="hint login-error" aria-live="polite"></p>
@@ -105,7 +105,7 @@
             </div>
             <h2 class="panel-title">دخول مركبة</h2>
           <form id="checkin-form" class="checkin-form">
-            <label class="checkout-label" for="plate">رقم اللوحة</label>
+            <label class="checkout-label" for="plate">رقم اللوحة <span class="req-mark">*</span></label>
             <input
               type="text"
               id="plate"
@@ -116,8 +116,8 @@
             />
             <div class="checkin-details">
               <label class="checkout-label" for="make">الطراز</label>
-              <input type="text" id="make" class="checkin-detail-input" placeholder="كورولا" autocomplete="off" />
-              <label class="checkout-label" for="vehicle-type">نوع الشاحنة</label>
+              <input type="text" id="make" class="checkin-detail-input" placeholder="كورولا (اختياري)" autocomplete="off" />
+              <label class="checkout-label" for="vehicle-type">نوع الشاحنة <span class="req-mark">*</span></label>
               <input type="text" id="vehicle-type" class="checkin-detail-input" list="truck-type-options" placeholder="براد، سطحة، شحن، ناقلة..." autocomplete="off" required />
               <datalist id="truck-type-options">
                 <option value="براد"></option>
@@ -127,14 +127,14 @@
                 <option value="أخرى"></option>
               </datalist>
               <label class="checkout-label" for="color">اللون</label>
-              <input type="text" id="color" class="checkin-detail-input" placeholder="فضي" autocomplete="off" />
-              <label class="checkout-label" for="driver-name">اسم السائق</label>
+              <input type="text" id="color" class="checkin-detail-input" placeholder="فضي (اختياري)" autocomplete="off" />
+              <label class="checkout-label" for="driver-name">اسم السائق <span class="req-mark">*</span></label>
               <input type="text" id="driver-name" class="checkin-detail-input" placeholder="الاسم الكامل" autocomplete="off" required />
               <label class="checkout-label" for="owner-name">اسم المالك</label>
-              <input type="text" id="owner-name" class="checkin-detail-input" placeholder="الاسم الكامل" autocomplete="off" />
-              <label class="checkout-label" for="partnership-company">الشركة</label>
+              <input type="text" id="owner-name" class="checkin-detail-input" placeholder="الاسم الكامل (اختياري)" autocomplete="off" />
+              <label class="checkout-label" for="partnership-company">الشركة <span class="req-mark">*</span></label>
               <input type="text" id="partnership-company" class="checkin-detail-input" placeholder="اسم الشركة" autocomplete="off" required />
-              <label class="checkout-label" for="mech">رقم الميكانيك</label>
+              <label class="checkout-label" for="mech">رقم الميكانيك <span class="req-mark">*</span></label>
               <input type="text" id="mech" class="checkin-detail-input" maxlength="64" autocomplete="off" placeholder="حسب الوثيقة" required />
               <label class="checkout-label" for="notes">ملاحظات</label>
               <textarea id="notes" class="checkin-detail-textarea" rows="2" placeholder="اختياري"></textarea>
@@ -150,7 +150,7 @@
           </div>
           <h2 class="panel-title">خروج مركبة</h2>
           <form id="checkout-form" class="checkout-form">
-            <label class="checkout-label" for="receipt">رمز الإيصال</label>
+            <label class="checkout-label" for="receipt">رمز الإيصال <span class="req-mark">*</span></label>
             <input
               type="text"
               id="receipt"
@@ -382,8 +382,8 @@
       <section class="panel panel-elevated">
         <h2 class="panel-title">السعة والتسعير</h2>
         <form id="settings-form" class="grid-form">
-          <label>عدد الأماكن <input type="number" id="total-slots" min="1" required /></label>
-          <label>السعر / يوم (ل.س جديدة) <input type="number" id="price-hour" min="0" step="1" required /></label>
+          <label>عدد الأماكن <span class="req-mark">*</span> <input type="number" id="total-slots" min="1" required /></label>
+          <label>السعر / يوم (ل.س جديدة) <span class="req-mark">*</span> <input type="number" id="price-hour" min="0" step="1" required /></label>
           <button type="submit" class="btn primary">حفظ</button>
         </form>
         <p id="settings-msg" class="hint muted" aria-live="polite"></p>
@@ -401,10 +401,10 @@
         <h2 class="panel-title">تغيير اسم مستخدم</h2>
         <p class="muted small-print">يُحدّث اسم الدخول للمدير أو الموظف. إن غيّرت اسمك الحالي سيطلب منك النظام تسجيل الدخول مجددًا.</p>
         <form id="admin-rename-form" class="stack-form stack-form-tight">
-          <label>المستخدم الحالي
+          <label>المستخدم الحالي <span class="req-mark">*</span>
             <select id="admin-rename-user" required></select>
           </label>
-          <label>اسم المستخدم الجديد <input type="text" id="admin-rename-new" maxlength="64" autocomplete="off" required /></label>
+          <label>اسم المستخدم الجديد <span class="req-mark">*</span> <input type="text" id="admin-rename-new" maxlength="64" autocomplete="off" required /></label>
           <button type="submit" class="btn primary btn-block">حفظ الاسم الجديد</button>
         </form>
         <p id="admin-rename-msg" class="hint muted" aria-live="polite"></p>
@@ -414,10 +414,10 @@
         <h2 class="panel-title">تعيين كلمة مرور مستخدم</h2>
         <p class="muted small-print">للمدير: تحديث حساب المدير أو الموظف دون الحاجة لكلمة المرور الحالية.</p>
         <form id="admin-password-form" class="stack-form stack-form-tight">
-          <label>المستخدم
+          <label>المستخدم <span class="req-mark">*</span>
             <select id="admin-pw-user" required></select>
           </label>
-          <label>كلمة المرور الجديدة <span class="pass-wrap"><input type="password" id="admin-pw-new" minlength="6" autocomplete="new-password" required /><button type="button" class="pass-toggle" data-pass-for="admin-pw-new" aria-label="إظهار كلمة المرور" title="إظهار كلمة المرور">👁</button></span></label>
+          <label>كلمة المرور الجديدة <span class="req-mark">*</span> <span class="pass-wrap"><input type="password" id="admin-pw-new" minlength="6" autocomplete="new-password" required /><button type="button" class="pass-toggle" data-pass-for="admin-pw-new" aria-label="إظهار كلمة المرور" title="إظهار كلمة المرور">👁</button></span></label>
           <button type="submit" class="btn accent btn-block">حفظ كلمة المرور</button>
         </form>
         <p id="admin-pw-msg" class="hint muted" aria-live="polite"></p>
@@ -535,11 +535,11 @@
     </div>
   </div>
 
-  <script src="/static/vendor/html5-qrcode.min.js?v=20260910-12"></script>
-  <script src="/static/vendor/qrcode.min.js?v=20260910-12"></script>
-  <script src="/static/vendor/html2canvas.min.js?v=20260910-12"></script>
-  <script src="/static/vendor/jszip.min.js?v=20260910-12"></script>
-  <script src="/static/pos-pwa.js?v=20260910-12"></script>
-  <script src="/static/app.js?v=20260910-12"></script>
+  <script src="/static/vendor/html5-qrcode.min.js?v=20260910-13"></script>
+  <script src="/static/vendor/qrcode.min.js?v=20260910-13"></script>
+  <script src="/static/vendor/html2canvas.min.js?v=20260910-13"></script>
+  <script src="/static/vendor/jszip.min.js?v=20260910-13"></script>
+  <script src="/static/pos-pwa.js?v=20260910-13"></script>
+  <script src="/static/app.js?v=20260910-13"></script>
 </body>
 </html>

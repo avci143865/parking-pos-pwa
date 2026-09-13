@@ -13,8 +13,8 @@
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
   <link rel="alternate icon" href="/favicon.ico" />
   <link rel="apple-touch-icon" href="/static/pwa-icon-192.png" />
-  <script src="/static/theme.js?v=20260910-12"></script>
-  <link rel="stylesheet" href="/static/styles.css?v=20260910-12" />
+  <script src="/static/theme.js?v=20260910-13"></script>
+  <link rel="stylesheet" href="/static/styles.css?v=20260910-13" />
   <style>
     .driver-wrap { max-width: var(--driver-card-width, 680px); margin: 0 auto; padding: 0 0 1rem; }
     .driver-title { margin: 0 0 0.5rem; font-size: 1.35rem; }
@@ -37,28 +37,28 @@
         <h1 class="driver-title">CarRegistration — تسجيل بروفايل المركبة</h1>
         <p class="driver-lead">أدخل بيانات السيارة. يمكنك إرفاق صورة اختيارية لتسهيل التحقق عند الموقف. بعد الحفظ تظهر بطاقة رقمية مع رمز QR ثابت — احفظ البطاقة كاملة كصورة واعرضها للموظف عند الدخول والخروج.</p>
         <form id="driver-form" class="stack-form panel panel-elevated" style="padding:1.25rem;">
-          <label>رقم اللوحة <span class="muted">*</span>
+          <label>رقم اللوحة <span class="req-mark">*</span>
             <input type="text" id="d-plate" required maxlength="32" autocomplete="off" placeholder="مثال: أ ب ج 1234" />
           </label>
           <label>الطراز
-            <input type="text" id="d-make" maxlength="64" autocomplete="off" placeholder="مثال: كورولا" />
+            <input type="text" id="d-make" maxlength="64" autocomplete="off" placeholder="مثال: كورولا (اختياري)" />
           </label>
           <label>النوع
-            <input type="text" id="d-type" maxlength="64" autocomplete="off" placeholder="مثال: تويوتا" />
+            <input type="text" id="d-type" maxlength="64" autocomplete="off" placeholder="مثال: تويوتا (اختياري)" />
           </label>
           <label>اللون
-            <input type="text" id="d-color" maxlength="32" autocomplete="off" placeholder="مثال: فضي" />
+            <input type="text" id="d-color" maxlength="32" autocomplete="off" placeholder="مثال: فضي (اختياري)" />
           </label>
           <label>اسم السائق
-            <input type="text" id="d-driver" maxlength="128" autocomplete="off" placeholder="الاسم الكامل" />
+            <input type="text" id="d-driver" maxlength="128" autocomplete="off" placeholder="الاسم الكامل (اختياري)" />
           </label>
           <label>اسم المالك
-            <input type="text" id="d-owner" maxlength="128" autocomplete="off" placeholder="الاسم الكامل" />
+            <input type="text" id="d-owner" maxlength="128" autocomplete="off" placeholder="الاسم الكامل (اختياري)" />
           </label>
           <label>الشركة التضامنية
             <input type="text" id="d-company" maxlength="128" autocomplete="off" placeholder="اختياري" />
           </label>
-          <label>رقم الميكانيك <span class="muted">*</span>
+          <label>رقم الميكانيك <span class="req-mark">*</span>
             <input type="text" id="d-mech" maxlength="64" autocomplete="off" placeholder="حسب الوثيقة" required />
           </label>
           <label>صورة المركبة <span class="muted">(اختياري)</span>
@@ -132,8 +132,8 @@
       </div>
     </div>
   </div>
-  <script src="/static/vendor/qrcode.min.js?v=20260910-12"></script>
-  <script src="/static/vendor/html2canvas.min.js?v=20260910-12"></script>
+  <script src="/static/vendor/qrcode.min.js?v=20260910-13"></script>
+  <script src="/static/vendor/html2canvas.min.js?v=20260910-13"></script>
   <script>
     const $ = (id) => document.getElementById(id);
 
