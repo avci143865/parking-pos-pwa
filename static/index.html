@@ -13,8 +13,8 @@
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
   <link rel="alternate icon" href="/favicon.ico" />
   <link rel="apple-touch-icon" href="/static/pwa-icon-192.png" />
-  <script src="/static/theme.js?v=20260910-11"></script>
-  <link rel="stylesheet" href="/static/styles.css?v=20260910-11" />
+  <script src="/static/theme.js?v=20260910-12"></script>
+  <link rel="stylesheet" href="/static/styles.css?v=20260910-12" />
 </head>
 <body>
   <!-- شاشة تسجيل الدخول -->
@@ -134,8 +134,8 @@
               <input type="text" id="owner-name" class="checkin-detail-input" placeholder="الاسم الكامل" autocomplete="off" />
               <label class="checkout-label" for="partnership-company">الشركة</label>
               <input type="text" id="partnership-company" class="checkin-detail-input" placeholder="اسم الشركة" autocomplete="off" required />
-              <label class="checkout-label" for="mech">رقم الميكانيك <span class="muted">(اختياري)</span></label>
-              <input type="text" id="mech" class="checkin-detail-input" maxlength="64" autocomplete="off" placeholder="حسب الوثيقة" />
+              <label class="checkout-label" for="mech">رقم الميكانيك</label>
+              <input type="text" id="mech" class="checkin-detail-input" maxlength="64" autocomplete="off" placeholder="حسب الوثيقة" required />
               <label class="checkout-label" for="notes">ملاحظات</label>
               <textarea id="notes" class="checkin-detail-textarea" rows="2" placeholder="اختياري"></textarea>
             </div>
@@ -425,7 +425,7 @@
 
       <section class="panel panel-elevated panel-danger-zone">
         <h2 class="panel-title">مسح بيانات الموقف</h2>
-        <p class="muted small-print">يحذف <strong>كل</strong> جلسات الدخول/الخروج والإيصالات من القاعدة، ويعيد السعة إلى 20 والسعر إلى 200 ل.س جديدة/يوم. <strong>لا يحذف حسابات المستخدمين.</strong></p>
+        <p class="muted small-print">يحذف <strong>كل</strong> جلسات الدخول/الخروج والإيصالات من القاعدة، ويعيد السعة إلى 2000 والسعر إلى 100 ل.س جديدة/يوم. <strong>لا يحذف حسابات المستخدمين.</strong></p>
         <p class="small-print muted">للتأكيد اكتب بالضبط في الحقل التالي: <code dir="ltr" class="wipe-code">امسح_كل_البيانات</code></p>
         <form id="admin-wipe-form" class="stack-form stack-form-tight">
           <label>تأكيد النص
@@ -535,11 +535,11 @@
     </div>
   </div>
 
-  <script src="/static/vendor/html5-qrcode.min.js?v=20260910-11"></script>
-  <script src="/static/vendor/qrcode.min.js?v=20260910-11"></script>
-  <script src="/static/vendor/html2canvas.min.js?v=20260910-11"></script>
-  <script src="/static/vendor/jszip.min.js?v=20260910-11"></script>
-  <script src="/static/pos-pwa.js?v=20260910-11"></script>
-  <script src="/static/app.js?v=20260910-11"></script>
+  <script src="/static/vendor/html5-qrcode.min.js?v=20260910-12"></script>
+  <script src="/static/vendor/qrcode.min.js?v=20260910-12"></script>
+  <script src="/static/vendor/html2canvas.min.js?v=20260910-12"></script>
+  <script src="/static/vendor/jszip.min.js?v=20260910-12"></script>
+  <script src="/static/pos-pwa.js?v=20260910-12"></script>
+  <script src="/static/app.js?v=20260910-12"></script>
 </body>
 </html>

@@ -137,8 +137,8 @@ def init_db():
             db.add(
                 ParkingSettings(
                     id=1,
-                    total_slots=20,
-                    price_per_hour_cents=200,
+                    total_slots=2000,
+                    price_per_hour_cents=100,
                 )
             )
             db.commit()
@@ -290,8 +290,8 @@ def admin_wipe_parking_data(
         )
     db.execute(delete(ParkingSession))
     s = get_settings_row(db)
-    s.total_slots = 20
-    s.price_per_hour_cents = 200
+    s.total_slots = 2000
+    s.price_per_hour_cents = 100
     db.commit()
     return OkResponse()
 
@@ -299,7 +299,7 @@ def admin_wipe_parking_data(
 def get_settings_row(db: Session) -> ParkingSettings:
     row = db.get(ParkingSettings, 1)
     if row is None:
-        row = ParkingSettings(id=1, total_slots=20, price_per_hour_cents=200)
+        row = ParkingSettings(id=1, total_slots=2000, price_per_hour_cents=100)
         db.add(row)
         db.commit()
         db.refresh(row)
@@ -577,6 +577,8 @@ def check_in(
     if not _optional_profile_text(body.partnership_company, 128):
         raise HTTPException(status_code=400, detail="اسم الشركة مطلوب.")
     mech = _mechanical_number(body.mechanical_number)
+    if not mech:
+        raise HTTPException(status_code=400, detail="رقم الميكانيك مطلوب.")
     dup_filters = [func.lower(VehicleProfile.license_plate) == func.lower(plate)]
     if mech:
         dup_filters.append(func.lower(VehicleProfile.mechanical_number) == func.lower(mech))
@@ -844,6 +846,8 @@ async def public_register_vehicle_profile(
     if not plate or len(plate) > 32:
         raise HTTPException(status_code=400, detail="رقم اللوحة غير صالح.")
     mech = _mechanical_number(mechanical_number)
+    if not mech:
+        raise HTTPException(status_code=400, detail="رقم الميكانيك مطلوب.")
     dup_plate = db.scalar(
         select(VehicleProfile.id).where(
             func.lower(VehicleProfile.license_plate) == func.lower(plate)
