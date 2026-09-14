@@ -40,6 +40,7 @@ from app.schemas import (
     CheckInResponse,
     CheckOutRequest,
     CheckOutResponse,
+    InsideVehicleItem,
     LoginRequest,
     LoginResponse,
     MonthStatsResponse,
@@ -686,6 +687,50 @@ def list_active(
         )
         for r in rows
     ]
+
+
+@app.get("/api/employee/inside-search", response_model=list[InsideVehicleItem])
+def inside_search(
+    q: str = Query(..., min_length=2, max_length=32),
+    db: Session = Depends(get_db),
+    _user: User = Depends(require_check_out),
+):
+    """بحث سريع برقم اللوحة بين المركبات داخل الموقف لخروج بضغطة واحدة."""
+    needle = f"%{q.strip().lower()}%"
+    rows = db.scalars(
+        select(ParkingSession)
+        .where(
+            ParkingSession.exited_at.is_(None),
+            func.lower(ParkingSession.license_plate).like(needle),
+        )
+        .order_by(ParkingSession.entered_at.desc())
+        .limit(20)
+    ).all()
+    ids = {r.vehicle_profile_id for r in rows if r.vehicle_profile_id is not None}
+    profs = (
+        {
+            p.id: p
+            for p in db.scalars(
+                select(VehicleProfile).where(VehicleProfile.id.in_(ids))
+            ).all()
+        }
+        if ids
+        else {}
+    )
+    out: list[InsideVehicleItem] = []
+    for r in rows:
+        p = profs.get(r.vehicle_profile_id) if r.vehicle_profile_id is not None else None
+        out.append(
+            InsideVehicleItem(
+                receipt_code=r.receipt_code,
+                license_plate=r.license_plate,
+                driver_name=p.driver_name if p else None,
+                slot_number=r.slot_number,
+                entered_at=r.entered_at,
+                public_token=_vehicle_qr_payload(p.public_token) if p else None,
+            )
+        )
+    return out
 
 
 @app.get("/api/sessions/history", response_model=list[SessionHistoryItem])

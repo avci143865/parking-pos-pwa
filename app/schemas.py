@@ -79,6 +79,17 @@ class SessionHistoryItem(BaseModel):
     qr_payload: str | None = None
 
 
+class InsideVehicleItem(BaseModel):
+    """مركبة داخل الموقف لنتائج البحث السريع في الخروج."""
+
+    receipt_code: str
+    license_plate: str
+    driver_name: str | None = None
+    slot_number: int
+    entered_at: datetime
+    public_token: str | None = None
+
+
 class LoginRequest(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=128)

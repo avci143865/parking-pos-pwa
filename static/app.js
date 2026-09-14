@@ -2355,6 +2355,100 @@ function wirePlateSuggest() {
 
 wirePlateSuggest();
 
+let checkoutSuggestTimer = null;
+
+async function refreshCheckoutSuggest() {
+  const input = $("checkout-plate");
+  const box = $("checkout-suggest");
+  if (!input || !box) return;
+  const q = input.value.trim();
+  if (q.length < 2) {
+    box.classList.add("hidden");
+    box.innerHTML = "";
+    return;
+  }
+  try {
+    const items = await api(`/api/employee/inside-search?q=${encodeURIComponent(q)}`);
+    const list = Array.isArray(items) ? items : [];
+    if (!list.length) {
+      box.classList.add("hidden");
+      box.innerHTML = "";
+      return;
+    }
+    box.innerHTML = "";
+    for (const it of list) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "suggest-item";
+      b.dataset.token = it.public_token || "";
+      b.dataset.receipt = it.receipt_code || "";
+      b.innerHTML =
+        `<span class="suggest-plate" dir="auto">${escapeHtml(it.license_plate || "")}</span>` +
+        `<span class="suggest-meta">${escapeHtml(it.driver_name || "—")} · م${escapeHtml(String(it.slot_number ?? "—"))}</span>`;
+      b.addEventListener("click", () => directCheckoutFromSuggest(b));
+      box.appendChild(b);
+    }
+    box.classList.remove("hidden");
+  } catch {
+    box.classList.add("hidden");
+  }
+}
+
+async function directCheckoutFromSuggest(btn) {
+  const box = $("checkout-suggest");
+  const token = btn.dataset.token || "";
+  const receipt = btn.dataset.receipt || "";
+  if (!token && !receipt) return;
+  btn.disabled = true;
+  const prev = btn.innerHTML;
+  btn.innerHTML = '<span class="suggest-meta">جارٍ الإخراج…</span>';
+  try {
+    const out = token
+      ? await api("/api/employee/vehicle-check-out", {
+          method: "POST",
+          body: JSON.stringify({ public_token: token }),
+        })
+      : await api("/api/check-out", {
+          method: "POST",
+          body: JSON.stringify({ receipt_code: receipt }),
+        });
+    if (box) {
+      box.classList.add("hidden");
+      box.innerHTML = "";
+    }
+    const input = $("checkout-plate");
+    if (input) input.value = "";
+    openCheckoutResultModal(out);
+    await refreshDeskData();
+    if (!$("view-tickets").classList.contains("hidden")) await refreshTickets();
+  } catch (e) {
+    alert(e.message);
+    btn.disabled = false;
+    btn.innerHTML = prev;
+  }
+}
+
+function wireCheckoutSuggest() {
+  const input = $("checkout-plate");
+  if (!input || input.dataset.suggestBound) return;
+  input.dataset.suggestBound = "1";
+  input.addEventListener("input", () => {
+    clearTimeout(checkoutSuggestTimer);
+    checkoutSuggestTimer = setTimeout(() => refreshCheckoutSuggest().catch(() => {}), 300);
+  });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") $("checkout-suggest")?.classList.add("hidden");
+  });
+  document.addEventListener("click", (e) => {
+    const box = $("checkout-suggest");
+    if (!box || box.classList.contains("hidden")) return;
+    if (e.target.closest("#checkout-suggest") || e.target.closest("#checkout-plate")) return;
+    box.classList.add("hidden");
+  });
+}
+
+wireCheckoutSuggest();
+
 $("checkout-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const doneBusy = beginFormBusy(e.currentTarget);
