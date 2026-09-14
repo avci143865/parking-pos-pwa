@@ -2319,9 +2319,21 @@ async function refreshPlateSuggest() {
         box.classList.add("hidden");
         box.innerHTML = "";
         input.value = "";
-        if (b.dataset.token) {
-          processVehicleScan(b.dataset.token).catch((err) => alert(err.message));
-        }
+        if (!b.dataset.token) return;
+        openVehicleFlowModal({
+          title: "تأكيد الدخول",
+          bodyHtml:
+            `<dl class="checkout-result-dl">` +
+            `<div><dt>اللوحة</dt><dd dir="auto">${escapeHtml(it.license_plate || "")}</dd></div>` +
+            `<div><dt>السائق</dt><dd>${escapeHtml(it.driver_name || "—")}</dd></div>` +
+            (it.vehicle_type ? `<div><dt>النوع</dt><dd>${escapeHtml(it.vehicle_type)}</dd></div>` : "") +
+            `</dl><p class="checkout-micro muted">سيتم فتح بطاقة المركبة لإتمام الدخول.</p>`,
+          primaryLabel: "تأكيد الدخول",
+          showPrimary: true,
+          onPrimary: () => {
+            processVehicleScan(b.dataset.token).catch((err) => alert(err.message));
+          },
+        });
       });
       box.appendChild(b);
     }
@@ -2385,7 +2397,19 @@ async function refreshCheckoutSuggest() {
       b.innerHTML =
         `<span class="suggest-plate" dir="auto">${escapeHtml(it.license_plate || "")}</span>` +
         `<span class="suggest-meta">${escapeHtml(it.driver_name || "—")} · م${escapeHtml(String(it.slot_number ?? "—"))}</span>`;
-      b.addEventListener("click", () => directCheckoutFromSuggest(b));
+      b.addEventListener("click", () => {
+        box.classList.add("hidden");
+        box.innerHTML = "";
+        const input = $("checkout-plate");
+        if (input) input.value = "";
+        confirmCheckoutExit({
+          plate: it.license_plate,
+          driver: it.driver_name,
+          slot: it.slot_number,
+          token: it.public_token || "",
+          receipt: it.receipt_code || "",
+        });
+      });
       box.appendChild(b);
     }
     box.classList.remove("hidden");
@@ -2394,38 +2418,48 @@ async function refreshCheckoutSuggest() {
   }
 }
 
-async function directCheckoutFromSuggest(btn) {
-  const box = $("checkout-suggest");
-  const token = btn.dataset.token || "";
-  const receipt = btn.dataset.receipt || "";
+function confirmCheckoutExit({ plate, driver, slot, token, receipt }) {
   if (!token && !receipt) return;
-  btn.disabled = true;
-  const prev = btn.innerHTML;
-  btn.innerHTML = '<span class="suggest-meta">جارٍ الإخراج…</span>';
-  try {
-    const out = token
-      ? await api("/api/employee/vehicle-check-out", {
-          method: "POST",
-          body: JSON.stringify({ public_token: token }),
-        })
-      : await api("/api/check-out", {
-          method: "POST",
-          body: JSON.stringify({ receipt_code: receipt }),
-        });
-    if (box) {
-      box.classList.add("hidden");
-      box.innerHTML = "";
-    }
-    const input = $("checkout-plate");
-    if (input) input.value = "";
-    openCheckoutResultModal(out);
-    await refreshDeskData();
-    if (!$("view-tickets").classList.contains("hidden")) await refreshTickets();
-  } catch (e) {
-    alert(e.message);
-    btn.disabled = false;
-    btn.innerHTML = prev;
-  }
+  openVehicleFlowModal({
+    title: "تأكيد الخروج",
+    bodyHtml:
+      `<dl class="checkout-result-dl">` +
+      `<div><dt>اللوحة</dt><dd dir="auto">${escapeHtml(plate || "")}</dd></div>` +
+      `<div><dt>السائق</dt><dd>${escapeHtml(driver || "—")}</dd></div>` +
+      `<div><dt>المكان</dt><dd>${escapeHtml(String(slot ?? "—"))}</dd></div>` +
+      `</dl><p class="checkout-micro muted">سيتم إتمام الخروج وحساب الرسوم.</p>`,
+    primaryLabel: "تأكيد الخروج",
+    showPrimary: true,
+    onPrimary: async () => {
+      const btn = $("vehicle-flow-primary");
+      const prev = btn ? btn.textContent : "";
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "جارٍ الإخراج…";
+      }
+      try {
+        const out = token
+          ? await api("/api/employee/vehicle-check-out", {
+              method: "POST",
+              body: JSON.stringify({ public_token: token }),
+            })
+          : await api("/api/check-out", {
+              method: "POST",
+              body: JSON.stringify({ receipt_code: receipt }),
+            });
+        closeVehicleFlowModal();
+        openCheckoutResultModal(out);
+        await refreshDeskData();
+        if (!$("view-tickets").classList.contains("hidden")) await refreshTickets();
+      } catch (e) {
+        alert(e.message);
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = prev;
+        }
+      }
+    },
+  });
 }
 
 function wireCheckoutSuggest() {

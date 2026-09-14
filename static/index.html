@@ -13,8 +13,8 @@
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
   <link rel="alternate icon" href="/favicon.ico" />
   <link rel="apple-touch-icon" href="/static/pwa-icon-192.png" />
-  <script src="/static/theme.js?v=20260910-16"></script>
-  <link rel="stylesheet" href="/static/styles.css?v=20260910-16" />
+  <script src="/static/theme.js?v=20260910-17"></script>
+  <link rel="stylesheet" href="/static/styles.css?v=20260910-17" />
 </head>
 <body>
   <!-- شاشة تسجيل الدخول -->
@@ -141,6 +141,18 @@
           </div>
           <h2 class="panel-title">خروج مركبة</h2>
           <form id="checkout-form" class="checkout-form">
+            <label class="checkout-label" for="checkout-plate">بحث برقم اللوحة</label>
+            <div class="plate-suggest-wrap">
+              <input
+                type="text"
+                id="checkout-plate"
+                class="checkout-receipt-input"
+                autocomplete="off"
+                placeholder="اكتب رقمين فأكثر ثم اختر للتأكيد والإخراج"
+              />
+              <div id="checkout-suggest" class="suggest-list hidden" role="listbox" aria-label="مركبات داخل الموقف"></div>
+            </div>
+            <div class="checkout-divider" aria-hidden="true"><span>أو</span></div>
             <label class="checkout-label" for="receipt">رمز الإيصال <span class="req-mark">*</span></label>
             <input
               type="text"
@@ -155,18 +167,6 @@
             />
             <p class="checkout-micro muted">الصق الرمز من الإيصال أو اكتبه يدويًا ثم اضغط إتمام الخروج.</p>
             <button type="submit" class="btn btn-block btn-checkout-submit">إتمام الخروج وحساب الرسوم</button>
-            <div class="checkout-divider" aria-hidden="true"><span>أو</span></div>
-            <label class="checkout-label" for="checkout-plate">بحث برقم اللوحة</label>
-            <div class="plate-suggest-wrap">
-              <input
-                type="text"
-                id="checkout-plate"
-                class="checkout-receipt-input"
-                autocomplete="off"
-                placeholder="اكتب رقمين فأكثر ثم اختر للإخراج الفوري"
-              />
-              <div id="checkout-suggest" class="suggest-list hidden" role="listbox" aria-label="مركبات داخل الموقف"></div>
-            </div>
           </form>
         </section>
 
@@ -538,11 +538,11 @@
     </div>
   </div>
 
-  <script src="/static/vendor/html5-qrcode.min.js?v=20260910-16"></script>
-  <script src="/static/vendor/qrcode.min.js?v=20260910-16"></script>
-  <script src="/static/vendor/html2canvas.min.js?v=20260910-16"></script>
-  <script src="/static/vendor/jszip.min.js?v=20260910-16"></script>
-  <script src="/static/pos-pwa.js?v=20260910-16"></script>
-  <script src="/static/app.js?v=20260910-16"></script>
+  <script src="/static/vendor/html5-qrcode.min.js?v=20260910-17"></script>
+  <script src="/static/vendor/qrcode.min.js?v=20260910-17"></script>
+  <script src="/static/vendor/html2canvas.min.js?v=20260910-17"></script>
+  <script src="/static/vendor/jszip.min.js?v=20260910-17"></script>
+  <script src="/static/pos-pwa.js?v=20260910-17"></script>
+  <script src="/static/app.js?v=20260910-17"></script>
 </body>
 </html>
