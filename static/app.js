@@ -2228,19 +2228,18 @@ $("settings-form").addEventListener("submit", async (e) => {
 $("checkin-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const doneBusy = beginFormBusy(e.currentTarget);
-  const mechVal = ($("mech") && $("mech").value) ? $("mech").value.trim() : "";
   try {
     const data = await api("/api/check-in", {
       method: "POST",
       body: JSON.stringify({
         license_plate: $("plate").value,
-        mechanical_number: mechVal || null,
+        mechanical_number: null,
         vehicle_make: $("make").value || null,
         vehicle_type: $("vehicle-type").value || null,
         vehicle_color: $("color").value || null,
         driver_name: $("driver-name").value || null,
-        owner_name: $("owner-name").value || null,
-        partnership_company: $("partnership-company").value || null,
+        owner_name: null,
+        partnership_company: null,
         notes: $("notes").value || null,
       }),
     });
@@ -2258,21 +2257,17 @@ $("checkin-form").addEventListener("submit", async (e) => {
       vehicle_type: data.vehicle_type || $("vehicle-type").value.trim() || null,
       vehicle_color: data.vehicle_color || $("color").value.trim() || null,
       driver_name: data.driver_name || $("driver-name").value.trim() || null,
-      owner_name: data.owner_name || $("owner-name").value.trim() || null,
-      partnership_company:
-        data.partnership_company || $("partnership-company").value.trim() || null,
-      mechanical_number: data.mechanical_number || mechVal || null,
+      owner_name: data.owner_name || null,
+      partnership_company: data.partnership_company || null,
+      mechanical_number: data.mechanical_number || null,
       registration_order: data.registration_order ?? null,
       qr_payload: data.qr_payload ?? null,
     });
     $("plate").value = "";
-    $("mech").value = "";
     $("make").value = "";
     $("vehicle-type").value = "";
     $("color").value = "";
     $("driver-name").value = "";
-    $("owner-name").value = "";
-    $("partnership-company").value = "";
     $("notes").value = "";
     await refreshDeskData();
     if (!$("view-tickets").classList.contains("hidden")) {
@@ -2291,6 +2286,77 @@ $("checkin-form").addEventListener("submit", async (e) => {
     doneBusy();
   }
 });
+
+let plateSuggestTimer = null;
+
+async function refreshPlateSuggest() {
+  const input = $("plate");
+  const box = $("plate-suggest");
+  if (!input || !box) return;
+  const q = input.value.trim();
+  if (q.length < 2) {
+    box.classList.add("hidden");
+    box.innerHTML = "";
+    return;
+  }
+  try {
+    const data = await api(`/api/vehicle-profiles?q=${encodeURIComponent(q)}&page_size=8`);
+    const items = Array.isArray(data?.items) ? data.items : [];
+    if (!items.length) {
+      box.classList.add("hidden");
+      box.innerHTML = "";
+      return;
+    }
+    box.innerHTML = "";
+    for (const it of items) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "suggest-item";
+      b.dataset.token = it.public_token || "";
+      b.innerHTML =
+        `<span class="suggest-plate" dir="auto">${escapeHtml(it.license_plate || "")}</span>` +
+        `<span class="suggest-meta">${escapeHtml(it.driver_name || "—")}` +
+        (it.vehicle_type ? ` · ${escapeHtml(it.vehicle_type)}` : "") +
+        `</span>`;
+      b.addEventListener("click", () => {
+        box.classList.add("hidden");
+        box.innerHTML = "";
+        input.value = "";
+        if (b.dataset.token) {
+          processVehicleScan(b.dataset.token).catch((err) => alert(err.message));
+        }
+      });
+      box.appendChild(b);
+    }
+    box.classList.remove("hidden");
+  } catch {
+    box.classList.add("hidden");
+  }
+}
+
+function wirePlateSuggest() {
+  const input = $("plate");
+  if (!input || input.dataset.suggestBound) return;
+  input.dataset.suggestBound = "1";
+  input.addEventListener("input", () => {
+    clearTimeout(plateSuggestTimer);
+    plateSuggestTimer = setTimeout(() => refreshPlateSuggest().catch(() => {}), 300);
+  });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") $("plate-suggest")?.classList.add("hidden");
+  });
+  document.addEventListener("click", (e) => {
+    const box = $("plate-suggest");
+    if (!box || box.classList.contains("hidden")) return;
+    if (e.target.closest("#plate-suggest") || e.target.closest("#plate")) return;
+    box.classList.add("hidden");
+  });
+  $("checkin-form")?.addEventListener("submit", () => {
+    $("plate-suggest")?.classList.add("hidden");
+  });
+}
+
+wirePlateSuggest();
 
 $("checkout-form").addEventListener("submit", async (e) => {
   e.preventDefault();

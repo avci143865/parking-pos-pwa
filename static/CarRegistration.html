@@ -13,8 +13,8 @@
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
   <link rel="alternate icon" href="/favicon.ico" />
   <link rel="apple-touch-icon" href="/static/pwa-icon-192.png" />
-  <script src="/static/theme.js?v=20260910-13"></script>
-  <link rel="stylesheet" href="/static/styles.css?v=20260910-13" />
+  <script src="/static/theme.js?v=20260910-14"></script>
+  <link rel="stylesheet" href="/static/styles.css?v=20260910-14" />
   <style>
     .driver-wrap { max-width: var(--driver-card-width, 680px); margin: 0 auto; padding: 0 0 1rem; }
     .driver-title { margin: 0 0 0.5rem; font-size: 1.35rem; }
@@ -51,15 +51,6 @@
           </label>
           <label>اسم السائق
             <input type="text" id="d-driver" maxlength="128" autocomplete="off" placeholder="الاسم الكامل (اختياري)" />
-          </label>
-          <label>اسم المالك
-            <input type="text" id="d-owner" maxlength="128" autocomplete="off" placeholder="الاسم الكامل (اختياري)" />
-          </label>
-          <label>الشركة التضامنية
-            <input type="text" id="d-company" maxlength="128" autocomplete="off" placeholder="اختياري" />
-          </label>
-          <label>رقم الميكانيك <span class="req-mark">*</span>
-            <input type="text" id="d-mech" maxlength="64" autocomplete="off" placeholder="حسب الوثيقة" required />
           </label>
           <label>صورة المركبة <span class="muted">(اختياري)</span>
             <input type="file" id="d-photo" accept="image/jpeg,image/png,image/webp" />
@@ -132,8 +123,8 @@
       </div>
     </div>
   </div>
-  <script src="/static/vendor/qrcode.min.js?v=20260910-13"></script>
-  <script src="/static/vendor/html2canvas.min.js?v=20260910-13"></script>
+  <script src="/static/vendor/qrcode.min.js?v=20260910-14"></script>
+  <script src="/static/vendor/html2canvas.min.js?v=20260910-14"></script>
   <script>
     const $ = (id) => document.getElementById(id);
 
@@ -282,9 +273,6 @@
       fd.append("vehicle_type", $("d-type").value.trim() || "");
       fd.append("vehicle_color", $("d-color").value.trim() || "");
       fd.append("driver_name", $("d-driver").value.trim() || "");
-      fd.append("owner_name", $("d-owner").value.trim() || "");
-      fd.append("partnership_company", $("d-company").value.trim() || "");
-      fd.append("mechanical_number", $("d-mech").value.trim() || "");
       if (fileInput.files && fileInput.files[0]) {
         fd.append("photo", fileInput.files[0]);
       }
@@ -316,9 +304,6 @@
         setDlText("driver-dl-type", data.vehicle_type || $("d-type").value.trim());
         setDlText("driver-dl-color", data.vehicle_color || $("d-color").value.trim());
         setDlText("driver-dl-driver", data.driver_name || $("d-driver").value.trim());
-        setDlText("driver-dl-owner", data.owner_name || $("d-owner").value.trim());
-        setDlText("driver-dl-company", data.partnership_company || $("d-company").value.trim());
-        setDlText("driver-dl-mech", data.mechanical_number || $("d-mech").value.trim());
         syncDriverCardFields();
 
         $("driver-qr-host").innerHTML = "";

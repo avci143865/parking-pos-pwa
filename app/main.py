@@ -574,11 +574,7 @@ def check_in(
         raise HTTPException(status_code=400, detail="نوع الشاحنة مطلوب.")
     if not _optional_profile_text(body.driver_name, 128):
         raise HTTPException(status_code=400, detail="اسم السائق مطلوب.")
-    if not _optional_profile_text(body.partnership_company, 128):
-        raise HTTPException(status_code=400, detail="اسم الشركة مطلوب.")
     mech = _mechanical_number(body.mechanical_number)
-    if not mech:
-        raise HTTPException(status_code=400, detail="رقم الميكانيك مطلوب.")
     dup_filters = [func.lower(VehicleProfile.license_plate) == func.lower(plate)]
     if mech:
         dup_filters.append(func.lower(VehicleProfile.mechanical_number) == func.lower(mech))
@@ -846,8 +842,6 @@ async def public_register_vehicle_profile(
     if not plate or len(plate) > 32:
         raise HTTPException(status_code=400, detail="رقم اللوحة غير صالح.")
     mech = _mechanical_number(mechanical_number)
-    if not mech:
-        raise HTTPException(status_code=400, detail="رقم الميكانيك مطلوب.")
     dup_plate = db.scalar(
         select(VehicleProfile.id).where(
             func.lower(VehicleProfile.license_plate) == func.lower(plate)
