@@ -13,8 +13,8 @@
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
   <link rel="alternate icon" href="/favicon.ico" />
   <link rel="apple-touch-icon" href="/static/pwa-icon-192.png" />
-  <script src="/static/theme.js?v=20260910-14"></script>
-  <link rel="stylesheet" href="/static/styles.css?v=20260910-14" />
+  <script src="/static/theme.js?v=20260910-15"></script>
+  <link rel="stylesheet" href="/static/styles.css?v=20260910-15" />
 </head>
 <body>
   <!-- شاشة تسجيل الدخول -->
@@ -118,8 +118,6 @@
               <div id="plate-suggest" class="suggest-list hidden" role="listbox" aria-label="مركبات مسجلة مطابقة"></div>
             </div>
             <div class="checkin-details">
-              <label class="checkout-label" for="make">الطراز</label>
-              <input type="text" id="make" class="checkin-detail-input" placeholder="كورولا (اختياري)" autocomplete="off" />
               <label class="checkout-label" for="vehicle-type">نوع الشاحنة <span class="req-mark">*</span></label>
               <input type="text" id="vehicle-type" class="checkin-detail-input" list="truck-type-options" placeholder="براد، سطحة، شحن، ناقلة..." autocomplete="off" required />
               <datalist id="truck-type-options">
@@ -129,12 +127,8 @@
                 <option value="ناقلة"></option>
                 <option value="أخرى"></option>
               </datalist>
-              <label class="checkout-label" for="color">اللون</label>
-              <input type="text" id="color" class="checkin-detail-input" placeholder="فضي (اختياري)" autocomplete="off" />
               <label class="checkout-label" for="driver-name">اسم السائق <span class="req-mark">*</span></label>
               <input type="text" id="driver-name" class="checkin-detail-input" placeholder="الاسم الكامل" autocomplete="off" required />
-              <label class="checkout-label" for="notes">ملاحظات</label>
-              <textarea id="notes" class="checkin-detail-textarea" rows="2" placeholder="اختياري"></textarea>
             </div>
             <button type="submit" class="btn btn-block btn-checkin-submit">إصدار إيصال وتخصيص مكان</button>
           </form>
@@ -532,11 +526,11 @@
     </div>
   </div>
 
-  <script src="/static/vendor/html5-qrcode.min.js?v=20260910-14"></script>
-  <script src="/static/vendor/qrcode.min.js?v=20260910-14"></script>
-  <script src="/static/vendor/html2canvas.min.js?v=20260910-14"></script>
-  <script src="/static/vendor/jszip.min.js?v=20260910-14"></script>
-  <script src="/static/pos-pwa.js?v=20260910-14"></script>
-  <script src="/static/app.js?v=20260910-14"></script>
+  <script src="/static/vendor/html5-qrcode.min.js?v=20260910-15"></script>
+  <script src="/static/vendor/qrcode.min.js?v=20260910-15"></script>
+  <script src="/static/vendor/html2canvas.min.js?v=20260910-15"></script>
+  <script src="/static/vendor/jszip.min.js?v=20260910-15"></script>
+  <script src="/static/pos-pwa.js?v=20260910-15"></script>
+  <script src="/static/app.js?v=20260910-15"></script>
 </body>
 </html>

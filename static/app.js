@@ -2234,13 +2234,13 @@ $("checkin-form").addEventListener("submit", async (e) => {
       body: JSON.stringify({
         license_plate: $("plate").value,
         mechanical_number: null,
-        vehicle_make: $("make").value || null,
+        vehicle_make: null,
         vehicle_type: $("vehicle-type").value || null,
-        vehicle_color: $("color").value || null,
+        vehicle_color: null,
         driver_name: $("driver-name").value || null,
         owner_name: null,
         partnership_company: null,
-        notes: $("notes").value || null,
+        notes: null,
       }),
     });
     openReceiptModal({
@@ -2253,9 +2253,9 @@ $("checkin-form").addEventListener("submit", async (e) => {
       hours_billed: null,
       profile_id: data.profile_id ?? null,
       public_token: data.public_token ?? null,
-      vehicle_make: data.vehicle_make || $("make").value.trim() || null,
+      vehicle_make: data.vehicle_make || null,
       vehicle_type: data.vehicle_type || $("vehicle-type").value.trim() || null,
-      vehicle_color: data.vehicle_color || $("color").value.trim() || null,
+      vehicle_color: data.vehicle_color || null,
       driver_name: data.driver_name || $("driver-name").value.trim() || null,
       owner_name: data.owner_name || null,
       partnership_company: data.partnership_company || null,
@@ -2264,11 +2264,8 @@ $("checkin-form").addEventListener("submit", async (e) => {
       qr_payload: data.qr_payload ?? null,
     });
     $("plate").value = "";
-    $("make").value = "";
     $("vehicle-type").value = "";
-    $("color").value = "";
     $("driver-name").value = "";
-    $("notes").value = "";
     await refreshDeskData();
     if (!$("view-tickets").classList.contains("hidden")) {
       await refreshTickets();
